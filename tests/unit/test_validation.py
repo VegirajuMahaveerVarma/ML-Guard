@@ -164,3 +164,18 @@ def test_release_status_is_none_when_no_performance_gate_is_configured():
     assert report.performance_passed is None
     assert report.release_passed is None
     assert report.to_dict()["performance_gate_configured"] is False
+
+
+
+def test_run_passes_variance_ratio_threshold_to_distribution_check():
+    reference = np.array([[-1.0], [1.0], [-1.0], [1.0]])
+    candidate = np.array([[-1.5], [1.5], [-1.5], [1.5]])
+    report = ModelGuard(ThresholdModel()).run(
+        candidate,
+        checks=("distribution_shift",),
+        reference_X=reference,
+        variance_ratio_threshold=1.5,
+    )
+
+    assert report.results[0].status == "failed"
+    assert report.results[0].metrics["variance_ratio_threshold"] == 1.5
