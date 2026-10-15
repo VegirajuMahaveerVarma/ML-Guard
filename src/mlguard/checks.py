@@ -123,7 +123,11 @@ def _dataset_regression_case(
         columns = getattr(input_source, "columns", None)
         if columns is not None:
             to_numpy = getattr(input_source, "to_numpy", None)
-            values = to_numpy().tolist() if callable(to_numpy) else np.asarray(input_source).tolist()
+            values = (
+                to_numpy().tolist()
+                if callable(to_numpy)
+                else np.asarray(input_source).tolist()
+            )
             input_format = "dataframe"
             column_names = tuple(columns)
         else:
@@ -956,7 +960,9 @@ def model_comparison(
             invalid_candidate = int((~candidate_finite).sum())
             failure_cases: list[RegressionCase] = []
             baseline_finite_rows = baseline_finite.reshape(baseline_finite.shape[0], -1).all(axis=1)
-            candidate_finite_rows = candidate_finite.reshape(candidate_finite.shape[0], -1).all(axis=1)
+            candidate_finite_rows = (
+                candidate_finite.reshape(candidate_finite.shape[0], -1).all(axis=1)
+            )
             candidate_invalid_rows = np.flatnonzero(baseline_finite_rows & ~candidate_finite_rows)
             for sample_index in candidate_invalid_rows[:MAX_FAILURE_CASES_PER_CHECK]:
                 case = _sample_regression_case(
