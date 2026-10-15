@@ -179,3 +179,25 @@ def test_run_passes_variance_ratio_threshold_to_distribution_check():
 
     assert report.results[0].status == "failed"
     assert report.results[0].metrics["variance_ratio_threshold"] == 1.5
+
+
+
+def test_validate_uses_configured_stability_repeats():
+    class ThirdCallChangesModel:
+        def __init__(self):
+            self.calls = 0
+
+        def predict(self, X):
+            self.calls += 1
+            return np.full(len(X), 0 if self.calls < 3 else 1, dtype=int)
+
+    report = ModelGuard(ThirdCallChangesModel()).validate(
+        [[0.1], [0.9]],
+        [0, 1],
+        task="classification",
+        checks=("prediction_stability",),
+        stability_repeats=3,
+    )
+
+    assert report.reliability_passed is False
+    assert report.reliability.results[0].metrics["repeats"] == 3
