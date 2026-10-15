@@ -113,3 +113,22 @@ def test_sklearn_pipeline_can_be_used_for_baseline_comparison():
 
     assert report.results[0].status == "failed"
     assert report.results[0].metrics["changed_samples"] == len(X)
+
+
+
+def test_sklearn_pipeline_evaluates_ground_truth_labels():
+    X, y = _dataset()
+    pipeline = _pipeline().fit(X, y)
+
+    report = ModelGuard.from_sklearn(pipeline).evaluate(
+        X,
+        y,
+        task="classification",
+        metadata={"dataset": "synthetic"},
+    )
+
+    assert report.metrics["accuracy"] == pytest.approx(1.0)
+    assert report.metrics["precision"] == pytest.approx(1.0)
+    assert report.metrics["recall"] == pytest.approx(1.0)
+    assert report.metrics["f1"] == pytest.approx(1.0)
+    assert report.metadata["dataset"] == "synthetic"
