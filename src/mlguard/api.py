@@ -158,6 +158,7 @@ class ModelGuard:
         labels: Sequence[Any] | None = None,
         noise_scale: float = 0.01,
         random_state: int = 0,
+        stability_repeats: int = 3,
         metadata: dict[str, Any] | None = None,
         reference_X: Any | None = None,
         shift_threshold: float = 0.25,
@@ -189,6 +190,7 @@ class ModelGuard:
             checks=checks,
             noise_scale=noise_scale,
             random_state=random_state,
+            stability_repeats=stability_repeats,
             metadata=report_metadata,
             reference_X=reference_X,
             shift_threshold=shift_threshold,
@@ -223,6 +225,7 @@ class ModelGuard:
         checks: tuple[str, ...] = ("prediction_stability", "noise_robustness"),
         noise_scale: float = 0.01,
         random_state: int = 0,
+        stability_repeats: int = 3,
         metadata: dict[str, Any] | None = None,
         reference_X: Any | None = None,
         shift_threshold: float = 0.25,
@@ -249,7 +252,9 @@ class ModelGuard:
         results: list[TestResult] = []
         for name in checks:
             check = self._CHECKS[name]
-            if name == "model_comparison":
+            if name == "prediction_stability":
+                result = check(self.model, X, repeats=stability_repeats)
+            elif name == "model_comparison":
                 result = check(
                     baseline_model,
                     self.model,
