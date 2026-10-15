@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from mlguard import ModelGuard
-from mlguard.checks import missing_value_robustness
+from mlguard.checks import missing_value_robustness, model_comparison
 from mlguard.exceptions import InputValidationError
 
 
@@ -152,3 +152,111 @@ def test_invalid_missing_fraction_is_rejected(fraction):
 def test_missing_value_robustness_requires_2d_numeric_input():
     with pytest.raises(InputValidationError, match="2D feature matrix"):
         missing_value_robustness(NaNOutputModel(), [0.1, 0.2])
+
+
+
+class OffsetRegressionModel:
+    def __init__(self, offset=0.0):
+        self.offset = offset
+
+    def predict(self, X):
+        values = np.asarray(X, dtype=float)
+        return values[:, 0] + self.offset
+
+
+class ConfigurableThresholdModel:
+    def __init__(self, threshold):
+        self.threshold = threshold
+
+    def predict(self, X):
+        values = np.asarray(X, dtype=float)
+        return (values[:, 0] > self.threshold).astype(int)
+
+
+def test_model_comparison_passes_for_identical_classification_predictions():
+    X = np.array([[0.1], [0.5], [0.9]])
+    result = model_comparison(
+        ConfigurableThresholdModel(0.4),
+        ConfigurableThresholdModel(0.4),
+        X,
+        comparison_mode="classification",
+    )
+    assert result.status == "passed"
+    assert result.metrics["changed_samples"] == 0
+    assert result.metrics["comparison_mode"] == "classification"
+
+
+def test_model_comparison_detects_changed_classification_predictions():
+    X = np.array([[0.1], [0.5], [0.9]])
+    result = model_comparison(
+        ConfigurableThresholdModel(0.4),
+        ConfigurableThresholdModel(0.6),
+        X,
+        comparison_mode="classification",
+    )
+    assert result.status == "failed"
+    assert result.metrics["changed_samples"] == 1
+    assert result.metrics["changed_fraction"] == pytest.approx(1 / 3)
+    assert result.findings[0].code == "MODEL_PREDICTIONS_CHANGED"
+
+
+def test_model_comparison_uses_tolerance_for_regression_predictions():
+    X = np.array([[0.1], [0.5], [0.9]])
+    result = model_comparison(
+        OffsetRegressionModel(),
+        OffsetRegressionModel(offset=0.001),
+        X,
+        comparison_mode="regression",
+        atol=0.01,
+        rtol=0.0,
+    )
+    assert result.status == "passed"
+    assert result.metrics["changed_samples"] == 0
+    assert result.metrics["max_absolute_difference"] == pytest.approx(0.001)
+
+
+def test_model_comparison_fails_when_regression_change_exceeds_tolerance():
+    X = np.array([[0.1], [0.5], [0.9]])
+    result = model_comparison(
+        OffsetRegressionModel(),
+        OffsetRegressionModel(offset=1.0),
+        X,
+        comparison_mode="regression",
+        atol=0.01,
+        rtol=0.0,
+    )
+    assert result.status == "failed"
+    assert result.metrics["changed_samples"] == 3
+    assert result.metrics["mean_absolute_difference"] == pytest.approx(1.0)
+
+
+def test_model_comparison_can_allow_a_small_changed_fraction():
+    X = np.array([[0.1], [0.5], [0.9]])
+    result = model_comparison(
+        ConfigurableThresholdModel(0.4),
+        ConfigurableThresholdModel(0.6),
+        X,
+        comparison_mode="classification",
+        max_changed_fraction=1 / 3,
+    )
+    assert result.status == "passed"
+    assert result.metrics["changed_fraction"] == pytest.approx(1 / 3)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"comparison_mode": "unknown"}, "comparison_mode"),
+        ({"atol": -0.1}, "atol"),
+        ({"rtol": np.inf}, "rtol"),
+        ({"max_changed_fraction": 1.1}, "max_changed_fraction"),
+    ],
+)
+def test_model_comparison_rejects_invalid_configuration(kwargs, message):
+    with pytest.raises(InputValidationError, match=message):
+        model_comparison(
+            OffsetRegressionModel(),
+            OffsetRegressionModel(),
+            [[0.1], [0.2]],
+            **kwargs,
+        )
