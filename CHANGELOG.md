@@ -7,13 +7,13 @@ Notable changes to MLGuard are recorded here.
 First public alpha scope:
 
 - Added five model reliability checks: repeated-call prediction stability,
-  Gaussian-noise robustness, mean/variance distribution-shift screening,
+  Gaussian-noise robustness, mean/variance/empirical-CDF distribution-shift screening,
   missing-value robustness, and baseline-versus-candidate prediction comparison.
 - Made prediction stability configurable (three calls by default) to catch
   intermittent changes that may not appear across only two calls.
 - Added a controlled fault-injection smoke demo and a repeated synthetic
-  distribution-shift experiment, including same-distribution controls and an
-  explicit shape-only blind-spot scenario. These are not substitutes for broad
+  distribution-shift experiment, including same-distribution controls and
+  empirical-CDF shape-change scenarios. These are not substitutes for broad
   external benchmarks.
 - Added a documented competitive positioning note based on current feature scope.
 - Added classification metrics (accuracy, precision, recall, F1, confusion
@@ -31,9 +31,9 @@ Alpha limitations:
 - CLI features and targets are currently numeric CSV inputs; classification is
   single-label, and regression supports a single numeric target.
 - Perturbation checks for noise and missing values require numeric features.
-- Distribution-shift screening compares feature means and sample variances;
-  it is descriptive, not a statistical hypothesis test, and can miss changes
-  in distribution shape that preserve those statistics.
+- Distribution-shift screening adds empirical-CDF shape distances with a
+  conservative sample-size-aware threshold and a feature-wise Bonferroni
+  correction; subtle changes may still be missed, especially with small samples.
 - GitHub Release distribution is prepared but has not been published.
 - The PyPI distribution name is provisionally set to `mlguard-reliability`;
   its availability must be confirmed before any PyPI upload.
