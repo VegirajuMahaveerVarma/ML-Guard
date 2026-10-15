@@ -23,6 +23,9 @@ class Finding:
 class TestResult:
     """Outcome of one model reliability check."""
 
+    # Prevent pytest from treating this public result model as a test class.
+    __test__ = False
+
     name: str
     status: Status
     summary: str
