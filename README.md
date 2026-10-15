@@ -17,6 +17,7 @@ MLGuard is an early-stage Python library for testing whether model predictions r
 - Baseline-versus-candidate prediction comparisons for model updates.
 - Structured report objects that can be converted to JSON-compatible dictionaries.
 - Local execution; no telemetry or network calls in the library.
+- Command-line interface for running checks against local numeric CSV files.
 
 ## Install for development
 
@@ -107,6 +108,42 @@ floating-point class labels, or `comparison_mode="regression"` for numeric
 regression outputs. Numeric differences are descriptive and do not directly
 measure model quality or accuracy.
 
+## Command-line interface
+
+Install MLGuard in the environment used for your model code:
+
+```bash
+python -m pip install -e .
+mlguard --version
+mlguard list-checks
+```
+
+The CLI loads your model from a trusted local Python import reference in
+`module:attribute` form. The referenced attribute may be a model instance, a
+class with a zero-argument constructor, or a zero-argument factory that returns
+an object exposing `predict(X)`. Add the directory containing your model module
+with `--model-path`.
+
+For example, if `my_models.py` provides a `load_model()` function and
+`features.csv` contains only numeric feature columns (no target column):
+
+```bash
+mlguard check --model my_models:load_model --model-path . --input features.csv --checks prediction_stability,noise_robustness --output report.json
+```
+
+To compare feature distributions, include `--reference-input reference.csv`
+and select `distribution_shift`. To compare a candidate model against an
+existing model, use `--baseline-model package:load_baseline` with
+`model_comparison`. Use `--skip-header` for CSV files whose first row is a
+header. The report is printed as JSON and can also be written with `--output`.
+
+The CLI exits with code 1 when checks fail, code 2 for setup or input errors,
+and code 0 when all checks pass. Add `--allow-failures` to make failed checks
+non-fatal in automation. Model references import and execute local Python code:
+only point MLGuard at trusted modules and model artifacts. Input CSV files must
+contain finite numeric feature values; missing-value testing introduces NaNs
+into a copy of those features.
+
 ## Run tests
 
 ```bash
@@ -117,7 +154,7 @@ python -m pytest
 
 - More robust input validation and typed configuration.
 - Additional metrics, documentation, and framework adapters.
-- CLI and CI integrations after the core API stabilizes.
+- Additional CI templates and richer reporting integrations.
 
 ## Privacy
 
