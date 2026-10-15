@@ -9,7 +9,12 @@ import numpy as np
 from mlguard._validation import as_array, require_numeric, validate_same_sample_count
 from mlguard.adapters.base import ModelAdapter
 from mlguard.exceptions import InputValidationError
-from mlguard.results import Finding, TestResult
+from mlguard.results import (
+    MAX_FAILURE_CASES_PER_CHECK,
+    Finding,
+    RegressionCase,
+    TestResult,
+)
 
 
 def _predict(model: ModelAdapter, X: Any) -> np.ndarray:
@@ -45,6 +50,62 @@ def _equal_predictions(left: np.ndarray, right: np.ndarray) -> np.ndarray:
     if left.ndim == 1:
         return np.asarray(left == right, dtype=bool)
     return np.asarray([np.array_equal(a, b) for a, b in zip(left, right, strict=True)])
+
+
+def _sample_input_descriptor(
+    X: Any, sample_index: int
+) -> tuple[Any, str, tuple[Any, ...]]:
+    """Capture one input row while retaining DataFrame columns when present."""
+    columns = getattr(X, "columns", None)
+    iloc = getattr(X, "iloc", None)
+    if columns is not None and iloc is not None:
+        return iloc[sample_index].tolist(), "dataframe", tuple(columns)
+    row = np.asarray(X)[sample_index]
+    return (row.tolist() if isinstance(row, np.ndarray) else row), "array", ()
+
+
+def _sample_regression_case(
+    check_name: str,
+    scenario: str,
+    input_source: Any,
+    sample_index: int,
+    *,
+    reference_source: Any | None = None,
+    expected_prediction: Any | None = None,
+    observed_prediction: Any | None = None,
+    parameters: dict[str, Any] | None = None,
+    finding_code: str | None = None,
+) -> RegressionCase | None:
+    """Build a one-sample case, skipping unsupported custom objects gracefully."""
+    try:
+        values, input_format, columns = _sample_input_descriptor(input_source, sample_index)
+        reference_values = None
+        reference_format = "array"
+        reference_columns: tuple[Any, ...] = ()
+        if reference_source is not None:
+            reference_values, reference_format, reference_columns = _sample_input_descriptor(
+                reference_source, sample_index
+            )
+        return RegressionCase.create(
+            check_name=check_name,
+            scenario=scenario,
+            input=values,
+            input_layout="sample",
+            input_format=input_format,
+            columns=columns,
+            reference_input=reference_values,
+            reference_input_layout="sample",
+            reference_input_format=reference_format,
+            reference_columns=reference_columns,
+            sample_index=int(sample_index),
+            expected_prediction=expected_prediction,
+            observed_prediction=observed_prediction,
+            parameters=dict(parameters or {}),
+            finding_code=finding_code,
+        )
+    except (TypeError, ValueError):
+        # Checking must remain usable for model inputs that cannot be stored as JSON.
+        return None
 
 
 def _preserve_input_container(original_input: Any, values: np.ndarray) -> Any:
@@ -99,6 +160,25 @@ def prediction_stability(
             details={"changed_samples": changed_samples, "repeats": repeats},
         ),
     )
+    failure_cases: list[RegressionCase] = []
+    for sample_index in np.flatnonzero(~stable)[:MAX_FAILURE_CASES_PER_CHECK]:
+        observed_prediction = first[sample_index]
+        for repeated_prediction in predictions[1:]:
+            if not _equal_predictions(first, repeated_prediction)[sample_index]:
+                observed_prediction = repeated_prediction[sample_index]
+                break
+        case = _sample_regression_case(
+            "prediction_stability",
+            "repeated_prediction_instability",
+            X,
+            int(sample_index),
+            expected_prediction=first[sample_index],
+            observed_prediction=observed_prediction,
+            parameters={"repeats": repeats},
+            finding_code="NON_DETERMINISTIC_PREDICTIONS",
+        )
+        if case is not None:
+            failure_cases.append(case)
     return TestResult(
         name="prediction_stability",
         status="passed" if agreement == 1.0 else "failed",
@@ -109,8 +189,11 @@ def prediction_stability(
             "prediction_agreement": agreement,
             "changed_samples": changed_samples,
             "repeats": repeats,
+            "failure_cases_captured": len(failure_cases),
+            "failure_cases_truncated": changed_samples > len(failure_cases),
         },
         findings=findings,
+        failure_cases=tuple(failure_cases),
     )
 
 
@@ -146,6 +229,22 @@ def noise_robustness(
             details={"changed_samples": int((~same).sum()), "noise_scale": noise_scale},
         ),
     )
+    changed_indices = np.flatnonzero(~same)
+    failure_cases: list[RegressionCase] = []
+    for sample_index in changed_indices[:MAX_FAILURE_CASES_PER_CHECK]:
+        case = _sample_regression_case(
+            "noise_robustness",
+            "gaussian_noise_changed_prediction",
+            changed_input,
+            int(sample_index),
+            reference_source=X,
+            expected_prediction=baseline[sample_index],
+            observed_prediction=noisy_predictions[sample_index],
+            parameters={"noise_scale": float(noise_scale), "random_state": int(random_state)},
+            finding_code="PREDICTIONS_CHANGED_UNDER_NOISE",
+        )
+        if case is not None:
+            failure_cases.append(case)
     return TestResult(
         name="noise_robustness",
         status="passed" if agreement == 1.0 else "failed",
@@ -155,8 +254,11 @@ def noise_robustness(
             "changed_samples": int((~same).sum()),
             "noise_scale": float(noise_scale),
             "random_state": int(random_state),
+            "failure_cases_captured": len(failure_cases),
+            "failure_cases_truncated": int(changed_indices.size) > len(failure_cases),
         },
         findings=findings,
+        failure_cases=tuple(failure_cases),
     )
 
 
@@ -322,6 +424,37 @@ def distribution_shift(
     mean_shift_count = int(mean_shifted.sum())
     shape_shift_count = int(shape_shifted.sum())
     shifted_count = int(shifted_indices.size)
+    failure_cases = tuple(
+        RegressionCase.create(
+            check_name="distribution_shift",
+            scenario="feature_distribution_shift",
+            input=candidate[:, [int(index)]].tolist(),
+            input_layout="dataset",
+            input_format="array",
+            reference_input=reference[:, [int(index)]].tolist(),
+            reference_input_layout="dataset",
+            reference_input_format="array",
+            parameters={
+                "threshold": float(threshold),
+                "variance_ratio_threshold": float(variance_ratio_threshold),
+                "shape_alpha": float(shape_alpha),
+                "feature_index": int(index),
+            },
+            observed_prediction={
+                "shift_types": [
+                    shift_type
+                    for shift_type, is_shifted in (
+                        ("mean", bool(mean_shifted[index])),
+                        ("variance", bool(variance_shifted[index])),
+                        ("shape", bool(shape_shifted[index])),
+                    )
+                    if is_shifted
+                ]
+            },
+            finding_code="FEATURE_DISTRIBUTION_SHIFT",
+        )
+        for index in shifted_indices[:MAX_FAILURE_CASES_PER_CHECK]
+    )
     return TestResult(
         name="distribution_shift",
         status="failed" if shifted_count else "passed",
@@ -346,8 +479,11 @@ def distribution_shift(
             ],
             "variance_ratios": variance_ratios,
             "empirical_cdf_distances": [float(value) for value in shape_distances],
+            "failure_cases_captured": len(failure_cases),
+            "failure_cases_truncated": shifted_count > len(failure_cases),
         },
         findings=findings,
+        failure_cases=failure_cases,
     )
 
 def missing_value_robustness(
@@ -384,8 +520,14 @@ def missing_value_robustness(
     total_cells = int(original.size)
     missing_cells = max(1, int(np.ceil(total_cells * missing_fraction)))
     rng = np.random.default_rng(random_state)
+    missing_flat_indices = rng.choice(total_cells, size=missing_cells, replace=False)
+    missing_mask = np.zeros(total_cells, dtype=bool)
+    missing_mask[missing_flat_indices] = True
     masked = original.copy()
-    masked.flat[rng.choice(total_cells, size=missing_cells, replace=False)] = np.nan
+    masked.flat[missing_flat_indices] = np.nan
+    masked_input: Any = masked
+    missing_mask_2d = missing_mask.reshape(original.shape)
+    missing_rows = np.flatnonzero(missing_mask_2d.any(axis=1))
 
     metrics = {
         "requested_missing_fraction": float(missing_fraction),
@@ -401,13 +543,39 @@ def missing_value_robustness(
     except Exception as exc:
         underlying = exc.__cause__ if exc.__cause__ is not None else exc
         error_type = type(underlying).__name__
+        failure_cases: list[RegressionCase] = []
+        for sample_index in missing_rows[:MAX_FAILURE_CASES_PER_CHECK]:
+            case = _sample_regression_case(
+                "missing_value_robustness",
+                "model_rejected_missing_values",
+                masked_input,
+                int(sample_index),
+                reference_source=X,
+                expected_prediction=baseline[sample_index],
+                observed_prediction={"error_type": error_type},
+                parameters={
+                    "missing_fraction": float(missing_fraction),
+                    "random_state": int(random_state),
+                    "missing_feature_indices": np.flatnonzero(
+                        missing_mask_2d[sample_index]
+                    ).tolist(),
+                },
+                finding_code="MODEL_REJECTED_MISSING_VALUES",
+            )
+            if case is not None:
+                failure_cases.append(case)
         return TestResult(
             name="missing_value_robustness",
             status="failed",
             summary=(
                 "The model could not return predictions for input containing NaN values."
             ),
-            metrics={**metrics, "error_type": error_type},
+            metrics={
+                **metrics,
+                "error_type": error_type,
+                "failure_cases_captured": len(failure_cases),
+                "failure_cases_truncated": len(missing_rows) > len(failure_cases),
+            },
             findings=(
                 Finding(
                     code="MODEL_REJECTED_MISSING_VALUES",
@@ -417,6 +585,7 @@ def missing_value_robustness(
                     details={"error_type": error_type},
                 ),
             ),
+            failure_cases=tuple(failure_cases),
         )
 
     if np.issubdtype(predictions.dtype, np.number):
@@ -435,6 +604,49 @@ def missing_value_robustness(
 
     metrics["invalid_prediction_count"] = int(invalid_predictions)
     if invalid_predictions:
+        def row_has_invalid(value: Any) -> bool:
+            row = np.asarray(value)
+            if np.issubdtype(row.dtype, np.number):
+                return not bool(np.isfinite(row).all())
+            if row.dtype.kind == "O":
+                for item in row.flat:
+                    if item is None:
+                        return True
+                    if isinstance(item, (float, np.floating, complex, np.complexfloating)):
+                        if not np.isfinite(item):
+                            return True
+            return False
+
+        invalid_rows = [
+            int(index)
+            for index in range(predictions.shape[0])
+            if row_has_invalid(predictions[index])
+        ]
+        failure_cases: list[RegressionCase] = []
+        for sample_index in invalid_rows[:MAX_FAILURE_CASES_PER_CHECK]:
+            case = _sample_regression_case(
+                "missing_value_robustness",
+                "invalid_prediction_with_missing_values",
+                masked_input,
+                sample_index,
+                reference_source=X,
+                expected_prediction=baseline[sample_index],
+                observed_prediction=predictions[sample_index],
+                parameters={
+                    "missing_fraction": float(missing_fraction),
+                    "random_state": int(random_state),
+                    "missing_feature_indices": np.flatnonzero(
+                        missing_mask_2d[sample_index]
+                    ).tolist(),
+                },
+                finding_code="INVALID_PREDICTIONS_WITH_MISSING_INPUT",
+            )
+            if case is not None:
+                failure_cases.append(case)
+        metrics.update({
+            "failure_cases_captured": len(failure_cases),
+            "failure_cases_truncated": len(invalid_rows) > len(failure_cases),
+        })
         return TestResult(
             name="missing_value_robustness",
             status="failed",
@@ -452,6 +664,7 @@ def missing_value_robustness(
                     details={"invalid_prediction_count": int(invalid_predictions)},
                 ),
             ),
+            failure_cases=tuple(failure_cases),
         )
 
     return TestResult(
@@ -687,6 +900,27 @@ def model_comparison(
             ),
         )
 
+    failure_cases: list[RegressionCase] = []
+    if not passed:
+        for sample_index in np.flatnonzero(changed_rows)[:MAX_FAILURE_CASES_PER_CHECK]:
+            case = _sample_regression_case(
+                "model_comparison",
+                "candidate_prediction_regression",
+                X,
+                int(sample_index),
+                expected_prediction=baseline[sample_index],
+                observed_prediction=candidate[sample_index],
+                parameters={
+                    "comparison_mode": effective_mode,
+                    "atol": float(atol),
+                    "rtol": float(rtol),
+                    "max_changed_fraction": float(max_changed_fraction),
+                },
+                finding_code="MODEL_PREDICTIONS_CHANGED",
+            )
+            if case is not None:
+                failure_cases.append(case)
+
     return TestResult(
         name="model_comparison",
         status="passed" if passed else "failed",
@@ -694,6 +928,11 @@ def model_comparison(
             f"{changed_samples} of {baseline.shape[0]} predictions differed "
             f"({changed_fraction:.3%}); allowed fraction is {max_changed_fraction:.3%}."
         ),
-        metrics=metrics,
+        metrics={
+            **metrics,
+            "failure_cases_captured": len(failure_cases),
+            "failure_cases_truncated": (not passed) and changed_samples > len(failure_cases),
+        },
         findings=findings,
+        failure_cases=tuple(failure_cases),
     )
