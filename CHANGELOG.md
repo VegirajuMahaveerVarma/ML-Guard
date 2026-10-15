@@ -22,6 +22,8 @@ First public alpha scope:
 - Added combined validation reports and optional metric-based release gates.
 - Added a local CLI for executing reliability checks against numeric CSV data
   and producing JSON reports.
+- Added opt-in failure-case capture, strict JSON save/load, and replay reports
+  so developers can track whether previously detected reliability issues remain.
 - Added optional scikit-learn estimator and Pipeline integration.
 - Added automated tests on Python 3.10–3.13.
 
@@ -31,6 +33,8 @@ Alpha limitations:
 - CLI features and targets are currently numeric CSV inputs; classification is
   single-label, and regression supports a single numeric target.
 - Perturbation checks for noise and missing values require numeric features.
+- Captured regression cases are bounded to 100 per check and contain real input
+  values when explicitly saved; review them for sensitive data before sharing.
 - Distribution-shift screening adds empirical-CDF shape distances with a
   conservative sample-size-aware threshold and a feature-wise Bonferroni
   correction; subtle changes may still be missed, especially with small samples.

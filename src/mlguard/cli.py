@@ -14,6 +14,11 @@ import numpy as np
 
 from mlguard import __version__
 from mlguard.api import ModelGuard
+from mlguard.regression import (
+    load_regression_cases,
+    replay_regression_cases,
+    save_regression_cases,
+)
 from mlguard.results import SuiteReport, ValidationReport
 
 CHECK_DESCRIPTIONS = {
@@ -264,9 +269,48 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Also write the complete JSON report to this file.",
     )
     check_parser.add_argument(
+        "--cases-output",
+        type=Path,
+        metavar="FILE",
+        help="Save captured failing inputs to an explicit JSON regression-case artifact.",
+    )
+    check_parser.add_argument(
         "--allow-failures",
         action="store_true",
         help="Exit successfully even if one or more checks fail.",
+    )
+    replay_parser = subparsers.add_parser(
+        "replay",
+        help="Replay saved regression cases against a model.",
+        description=(
+            "Replay saved failing inputs. Exit 0 when every issue is resolved, "
+            "1 when an issue is still reproduced, and 2 for setup errors."
+        ),
+    )
+    replay_parser.add_argument(
+        "--cases",
+        required=True,
+        type=Path,
+        metavar="FILE",
+        help="Regression-case JSON file produced by --cases-output.",
+    )
+    replay_parser.add_argument(
+        "--model",
+        help="Trusted module:attribute resolving to a model or zero-argument factory; "
+        "not required for distribution-shift-only case files.",
+    )
+    replay_parser.add_argument(
+        "--model-path",
+        action="append",
+        default=[],
+        metavar="DIR",
+        help="Directory to add to Python's import path; may be supplied more than once.",
+    )
+    replay_parser.add_argument(
+        "--output",
+        type=Path,
+        metavar="FILE",
+        help="Also write the replay report to this file.",
     )
     return parser
 
@@ -353,7 +397,10 @@ def _run_checks(args: argparse.Namespace) -> int:
         report = guard.run(X, **common_options)
         failed = not report.passed
 
-    rendered = json.dumps(report.to_dict(), indent=2, ensure_ascii=False)
+    if args.cases_output is not None:
+        save_regression_cases(report.failure_cases, args.cases_output)
+
+    rendered = json.dumps(report.to_dict(), indent=2, ensure_ascii=False, allow_nan=False)
     if args.output is not None:
         args.output.write_text(rendered + "\n", encoding="utf-8")
     print(rendered)
@@ -361,6 +408,22 @@ def _run_checks(args: argparse.Namespace) -> int:
     if failed and not args.allow_failures:
         return 1
     return 0
+
+def _run_replay(args: argparse.Namespace) -> int:
+    """Replay a saved case artifact against the requested model."""
+    cases = load_regression_cases(args.cases)
+    for search_path in reversed(args.model_path):
+        path = str(Path(search_path).expanduser().resolve())
+        if path not in sys.path:
+            sys.path.insert(0, path)
+    model = _model_from_spec(args.model) if args.model else None
+    report = replay_regression_cases(model, cases)
+    rendered = json.dumps(report.to_dict(), indent=2, ensure_ascii=False, allow_nan=False)
+    if args.output is not None:
+        args.output.write_text(rendered + "\n", encoding="utf-8")
+    print(rendered)
+    return 0 if report.passed else 1
+
 
 def main(argv: list[str] | None = None) -> int:
     """Run the MLGuard CLI and return a process exit code."""
@@ -373,6 +436,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
+        if args.command == "replay":
+            return _run_replay(args)
         return _run_checks(args)
     except Exception as exc:
         print(f"mlguard: error: {exc}", file=sys.stderr)

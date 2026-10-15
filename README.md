@@ -17,7 +17,8 @@ MLGuard is an early-stage Python library for testing whether model predictions r
 - Missing-value robustness checks that report whether a model rejects NaNs or emits invalid predictions.
 - Baseline-versus-candidate prediction comparisons for model updates.
 - Dataset-level classification and regression metrics against ground-truth targets.
-- Structured report objects that can be converted to JSON-compatible dictionaries.
+- Structured report objects with opt-in, reproducible failing-input case capture.
+- Save, load, and replay regression cases to check whether previously detected issues remain.
 - Local execution; no telemetry or network calls in the library.
 - Command-line interface for running checks against local numeric CSV files.
 
@@ -305,6 +306,36 @@ non-fatal in automation. Model references import and execute local Python code:
 only point MLGuard at trusted modules and model artifacts. Input CSV files must
 contain finite numeric feature values; missing-value testing introduces NaNs
 into a copy of those features.
+
+## Save and replay regression cases
+
+When a reliability check flags a failure, MLGuard captures up to 100 compact
+cases per check in memory. Each case preserves the specific input, relevant
+reference input, check parameters, and expected/observed predictions when
+available. Reports include the case count but do not expose input values by
+default. To explicitly save cases:
+
+```python
+from mlguard import ModelGuard, load_regression_cases, replay_regression_cases, save_regression_cases
+
+report = ModelGuard(model).run(
+    X_test,
+    checks=("noise_robustness", "missing_value_robustness"),
+    noise_scale=0.02,
+    random_state=42,
+)
+save_regression_cases(report.failure_cases, "mlguard-cases.json")
+
+cases = load_regression_cases("mlguard-cases.json")
+replay = replay_regression_cases(model, cases)
+print(replay.to_dict())
+```
+
+The CLI supports `--cases-output FILE` on `mlguard check`, then
+`mlguard replay --model my_models:load_model --cases FILE` to recheck the
+captured cases. Replay exits successfully when every saved issue is resolved.
+Case files contain real input values, so treat them as potentially sensitive
+data; see [Regression cases](docs/REGRESSION_CASES.md) for the full workflow.
 
 ## Run tests
 
