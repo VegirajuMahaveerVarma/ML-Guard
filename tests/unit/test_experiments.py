@@ -59,3 +59,18 @@ def test_experiment_rejects_invalid_effect_values():
         run_experiment(trials=1, sample_size=4, mean_shifts=(float("nan"),))
     with pytest.raises(ValueError, match="variance_scales"):
         run_experiment(trials=1, sample_size=4, variance_scales=(0.0,))
+
+
+
+def test_experiment_gate_passes_on_canonical_strong_shifts():
+    report = run_experiment(
+        trials=20,
+        sample_size=512,
+        seed=20261015,
+        additional_sample_sizes=(),
+    )
+
+    assert report["smoke_gate_passed"] is True
+    assert report["smoke_gate"]["mean_shift_detection_rate"] >= 0.95
+    assert report["smoke_gate"]["variance_shift_detection_rate"] >= 0.95
+    assert report["smoke_gate"]["same_distribution_false_positive_rate"] <= 0.10
