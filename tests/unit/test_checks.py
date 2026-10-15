@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from mlguard import ModelGuard
+from mlguard.checks import missing_value_robustness
 from mlguard.exceptions import InputValidationError
 
 
@@ -79,3 +80,76 @@ def test_distribution_shift_rejects_negative_threshold():
     from mlguard.checks import distribution_shift
     with pytest.raises(InputValidationError, match="threshold"):
         distribution_shift([[1.0]], [[2.0]], threshold=-0.1)
+
+
+
+class NaNRejectingModel:
+    def predict(self, X):
+        values = np.asarray(X, dtype=float)
+        if np.isnan(values).any():
+            raise ValueError("NaN values are not supported")
+        return values[:, 0]
+
+
+class NaNOutputModel:
+    def predict(self, X):
+        values = np.asarray(X, dtype=float)
+        if np.isnan(values).any():
+            return np.full(len(values), np.nan)
+        return values[:, 0]
+
+
+def test_missing_value_robustness_passes_when_model_handles_nan():
+    class NaNHandlingModel:
+        def predict(self, X):
+            values = np.asarray(X, dtype=float)
+            return np.nan_to_num(values[:, 0], nan=0.0)
+
+    X = np.array([[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]])
+    result = missing_value_robustness(
+        NaNHandlingModel(), X, missing_fraction=0.25, random_state=4
+    )
+    assert result.status == "passed"
+    assert result.metrics["missing_cells"] == 2
+    assert result.metrics["invalid_prediction_count"] == 0
+
+
+def test_missing_value_robustness_reports_model_rejection():
+    X = np.array([[0.1, 0.2], [0.3, 0.4]])
+    result = missing_value_robustness(
+        NaNRejectingModel(), X, missing_fraction=0.25, random_state=4
+    )
+    assert result.status == "failed"
+    assert result.findings[0].code == "MODEL_REJECTED_MISSING_VALUES"
+
+
+def test_missing_value_robustness_detects_invalid_predictions():
+    X = np.array([[0.1, 0.2], [0.3, 0.4]])
+    result = missing_value_robustness(
+        NaNOutputModel(), X, missing_fraction=0.25, random_state=4
+    )
+    assert result.status == "failed"
+    assert result.findings[0].code == "INVALID_PREDICTIONS_WITH_MISSING_INPUT"
+
+
+def test_missing_value_robustness_does_not_mutate_input():
+    X = np.array([[0.1, 0.2], [0.3, 0.4]])
+    original = X.copy()
+    result = missing_value_robustness(
+        FirstColumnThresholdModel(), X, missing_fraction=0.25, random_state=2
+    )
+    assert result.status == "passed"
+    np.testing.assert_array_equal(X, original)
+
+
+@pytest.mark.parametrize("fraction", [0.0, -0.1, 1.1, np.inf])
+def test_invalid_missing_fraction_is_rejected(fraction):
+    with pytest.raises(InputValidationError, match="missing_fraction"):
+        missing_value_robustness(
+            NaNOutputModel(), [[0.1], [0.2]], missing_fraction=fraction
+        )
+
+
+def test_missing_value_robustness_requires_2d_numeric_input():
+    with pytest.raises(InputValidationError, match="2D feature matrix"):
+        missing_value_robustness(NaNOutputModel(), [0.1, 0.2])
