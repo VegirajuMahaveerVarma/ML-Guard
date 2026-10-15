@@ -28,16 +28,17 @@ the `v0.1.0` release is published, download the wheel from the release page
 and install it locally:
 
 ```bash
-python -m pip install ./mlguard-0.1.0-py3-none-any.whl
+python -m pip install ./mlguard_reliability-0.1.0-py3-none-any.whl
 mlguard --version
 ```
 
-The wheel filename above is the expected artifact name for version `0.1.0`.
-See [CHANGELOG.md](CHANGELOG.md) for the alpha's scope and
-[docs/RELEASING.md](docs/RELEASING.md) for the release process. The project is
-not currently being published to PyPI under the `mlguard` distribution name;
-that name conflicts with an unrelated package, so PyPI publishing is deferred
-until a distinct distribution name is chosen and confirmed.
+The wheel filename above is the expected artifact name for version `0.1.0`
+with the proposed distribution name `mlguard-reliability`; the import name
+and CLI command remain `mlguard`. This distribution name is not reserved until
+a first upload. Confirm its availability on PyPI immediately before publishing;
+if unavailable, update metadata and the release filenames before tagging.
+No PyPI package has been published. See [CHANGELOG.md](CHANGELOG.md) for the
+alpha scope and [docs/RELEASING.md](docs/RELEASING.md) for release steps.
 
 ## Install for development
 

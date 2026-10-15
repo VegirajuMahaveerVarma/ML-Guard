@@ -37,9 +37,12 @@ version.
 
 ## PyPI distribution
 
-PyPI publication is intentionally not automated yet. The distribution name
-`mlguard` is reported as already used by an unrelated project. Before PyPI
-publishing, choose a distinct package distribution name, confirm that name is
-available on PyPI, update package metadata and installation docs, and configure
-a PyPI trusted publisher. The import package can remain `mlguard` even if the
-install/distribution name differs.
+PyPI publication is intentionally not automated yet. The project metadata now
+uses the proposed distribution name `mlguard-reliability`, while the import
+package and CLI remain `mlguard`. PyPI name availability could not be
+conclusively verified during this preparation pass, and a name is not reserved
+until its first upload. Before any PyPI upload, check the exact project URL and
+JSON endpoint, then update the wheel filename examples if a different name is
+required. Configure a PyPI trusted publisher only after confirming the name and
+deciding to distribute through PyPI. The current release workflow publishes
+GitHub Release assets only.

@@ -26,5 +26,6 @@ Alpha limitations:
 - Perturbation checks for noise and missing values require numeric features.
 - Distribution-shift screening is descriptive and is not a statistical
   hypothesis test.
-- This release is distributed as GitHub assets. PyPI publication is deferred
-  until a distinct distribution name is confirmed.
+- GitHub Release distribution is prepared but has not been published.
+- The PyPI distribution name is provisionally set to `mlguard-reliability`;
+  its availability must be confirmed before any PyPI upload.
