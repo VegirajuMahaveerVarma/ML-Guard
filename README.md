@@ -9,7 +9,8 @@ MLGuard is an early-stage Python library for testing whether model predictions r
 ## Features
 
 - Framework-light model interface: any object with a `predict(X)` method can be checked.
-- Optional scikit-learn adapter.
+- Optional scikit-learn integration for fitted estimators and Pipelines.
+- Pandas DataFrame support for named numeric features in perturbation checks.
 - Prediction stability checks using repeated calls.
 - Gaussian-noise robustness checks with reproducible random seeds.
 - Reference-versus-candidate feature distribution screening using standardized mean differences.
@@ -38,6 +39,29 @@ For scikit-learn integration, install the optional dependency:
 ```bash
 python -m pip install -e ".[sklearn]"
 ```
+
+Use `ModelGuard.from_sklearn` for a fitted scikit-learn estimator or Pipeline.
+It checks that the estimator is fitted before running and preserves DataFrame
+columns for numeric noise and missing-value perturbations, which is important
+for Pipelines that select features by column name.
+
+```python
+from mlguard import ModelGuard
+
+# pipeline is an already-fitted sklearn Pipeline
+guard = ModelGuard.from_sklearn(pipeline)
+report = guard.run(
+    X_test,
+    checks=("prediction_stability", "noise_robustness"),
+    noise_scale=0.001,
+    random_state=42,
+)
+print(report.to_dict())
+```
+
+MLGuard's noise and missing-value checks currently require numeric features.
+Prediction stability and model comparison can also be used with other
+scikit-learn-compatible input containers supported by the estimator.
 
 ## Quick start
 
@@ -134,7 +158,8 @@ mlguard check --model my_models:load_model --model-path . --input features.csv -
 To compare feature distributions, include `--reference-input reference.csv`
 and select `distribution_shift`. To compare a candidate model against an
 existing model, use `--baseline-model package:load_baseline` with
-`model_comparison`. Use `--skip-header` for CSV files whose first row is a
+`model_comparison`. For Python code, wrap an existing fitted baseline with
+`SklearnAdapter` and pass it as `baseline_model` to `ModelGuard.from_sklearn(candidate).run(...)`. Use `--skip-header` for CSV files whose first row is a
 header. The report is printed as JSON and can also be written with `--output`.
 
 The CLI exits with code 1 when checks fail, code 2 for setup or input errors,
