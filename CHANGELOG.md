@@ -11,8 +11,11 @@ First public alpha scope:
   missing-value robustness, and baseline-versus-candidate prediction comparison.
 - Made prediction stability configurable (three calls by default) to catch
   intermittent changes that may not appear across only two calls.
-- Added a controlled fault-injection smoke demo and a documented competitive
-  positioning note; these are not substitutes for broad external benchmarks.
+- Added a controlled fault-injection smoke demo and a repeated synthetic
+  distribution-shift experiment, including same-distribution controls and an
+  explicit shape-only blind-spot scenario. These are not substitutes for broad
+  external benchmarks.
+- Added a documented competitive positioning note based on current feature scope.
 - Added classification metrics (accuracy, precision, recall, F1, confusion
   matrix, and per-class metrics) and regression metrics (MAE, MSE, RMSE,
   R-squared, and maximum absolute error).
