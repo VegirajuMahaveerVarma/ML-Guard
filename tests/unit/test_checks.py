@@ -47,3 +47,35 @@ def test_non_numeric_features_are_rejected(constant_model):
         ModelGuard(constant_model).run(
             [["a"], ["b"]], checks=("noise_robustness",)
         )
+
+
+def test_distribution_shift_passes_for_matching_distributions():
+    reference = np.array([[0.0, 1.0], [1.0, 2.0], [2.0, 3.0], [3.0, 4.0]])
+    candidate = reference + np.array([0.1, 0.1])
+    from mlguard.checks import distribution_shift
+    result = distribution_shift(reference, candidate, threshold=0.25)
+    assert result.status == "passed"
+    assert result.metrics["shifted_feature_count"] == 0
+
+
+def test_distribution_shift_flags_shifted_feature():
+    reference = np.array([[0.0, 0.0], [1.0, 1.0], [2.0, 2.0], [3.0, 3.0]])
+    candidate = reference.copy()
+    candidate[:, 1] += 5.0
+    from mlguard.checks import distribution_shift
+    result = distribution_shift(reference, candidate, threshold=0.25)
+    assert result.status == "failed"
+    assert result.metrics["shifted_feature_count"] == 1
+    assert result.findings[0].details["feature_index"] == 1
+
+
+def test_distribution_shift_requires_matching_feature_counts():
+    from mlguard.checks import distribution_shift
+    with pytest.raises(InputValidationError, match="same number of features"):
+        distribution_shift([[1.0, 2.0]], [[1.0]])
+
+
+def test_distribution_shift_rejects_negative_threshold():
+    from mlguard.checks import distribution_shift
+    with pytest.raises(InputValidationError, match="threshold"):
+        distribution_shift([[1.0]], [[2.0]], threshold=-0.1)
