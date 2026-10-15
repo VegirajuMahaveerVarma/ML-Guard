@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from mlguard.adapters.base import ModelAdapter
-from mlguard.checks import distribution_shift, noise_robustness, prediction_stability
+from mlguard.checks import (\n    distribution_shift,\n    missing_value_robustness,\n    noise_robustness,\n    prediction_stability,\n)
 from mlguard.results import SuiteReport, TestResult
 
 
@@ -15,7 +15,7 @@ class ModelGuard:
     _CHECKS = {
         "prediction_stability": prediction_stability,
         "noise_robustness": noise_robustness,
-        "distribution_shift": distribution_shift,
+        "distribution_shift": distribution_shift,\n        "missing_value_robustness": missing_value_robustness,
     }
 
     def __init__(self, model: ModelAdapter) -> None:
@@ -32,7 +32,7 @@ class ModelGuard:
         random_state: int = 0,
         metadata: dict[str, Any] | None = None,
         reference_X: Any | None = None,
-        shift_threshold: float = 0.25,
+        shift_threshold: float = 0.25,\n        missing_fraction: float = 0.05,
     ) -> SuiteReport:
         """Execute requested checks and return a structured report."""
         if not checks:
@@ -49,7 +49,7 @@ class ModelGuard:
             check = self._CHECKS[name]
             if name == "distribution_shift":
                 result = check(reference_X, X, threshold=shift_threshold)
-            elif name == "noise_robustness":
+            elif name == "missing_value_robustness":\n                result = check(\n                    self.model,\n                    X,\n                    missing_fraction=missing_fraction,\n                    random_state=random_state,\n                )\n            elif name == "noise_robustness":
                 result = check(
                     self.model, X, noise_scale=noise_scale, random_state=random_state
                 )
