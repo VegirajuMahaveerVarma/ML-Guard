@@ -161,6 +161,7 @@ class ModelGuard:
         metadata: dict[str, Any] | None = None,
         reference_X: Any | None = None,
         shift_threshold: float = 0.25,
+        variance_ratio_threshold: float = 2.0,
         missing_fraction: float = 0.05,
         baseline_model: ModelAdapter | None = None,
         comparison_mode: str = "auto",
@@ -191,6 +192,7 @@ class ModelGuard:
             metadata=report_metadata,
             reference_X=reference_X,
             shift_threshold=shift_threshold,
+            variance_ratio_threshold=variance_ratio_threshold,
             missing_fraction=missing_fraction,
             baseline_model=baseline_model,
             comparison_mode=comparison_mode,
@@ -224,6 +226,7 @@ class ModelGuard:
         metadata: dict[str, Any] | None = None,
         reference_X: Any | None = None,
         shift_threshold: float = 0.25,
+        variance_ratio_threshold: float = 2.0,
         missing_fraction: float = 0.05,
         baseline_model: ModelAdapter | None = None,
         comparison_mode: str = "auto",
@@ -257,7 +260,12 @@ class ModelGuard:
                     max_changed_fraction=max_changed_fraction,
                 )
             elif name == "distribution_shift":
-                result = check(reference_X, X, threshold=shift_threshold)
+                result = check(
+                    reference_X,
+                    X,
+                    threshold=shift_threshold,
+                    variance_ratio_threshold=variance_ratio_threshold,
+                )
             elif name == "missing_value_robustness":
                 result = check(
                     self.model,
