@@ -1,5 +1,6 @@
-"""Allow checking that the installed package imports correctly."""
+"""Run MLGuard as a module with python -m mlguard."""
 
-from mlguard import __version__
+from mlguard.cli import main
 
-print(f"MLGuard {__version__}")
+if __name__ == "__main__":
+    raise SystemExit(main())
