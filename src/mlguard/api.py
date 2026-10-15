@@ -26,6 +26,18 @@ class ModelGuard:
         "model_comparison": model_comparison,
     }
 
+    @classmethod
+    def from_sklearn(cls, estimator: Any) -> ModelGuard:
+        """Build a guard for a fitted scikit-learn estimator or Pipeline.
+
+        This convenience constructor uses the optional scikit-learn adapter,
+        which validates fitted state and preserves incoming data containers.
+        Install the optional dependency with pip install mlguard[sklearn].
+        """
+        from mlguard.adapters.sklearn import SklearnAdapter
+
+        return cls(SklearnAdapter(estimator))
+
     def __init__(self, model: ModelAdapter) -> None:
         if not callable(getattr(model, "predict", None)):
             raise TypeError("model must expose a callable predict(X) method")
