@@ -148,6 +148,9 @@ def run_experiment(
         "sample_sizes": list(sample_sizes),
         "mean_shifts": list(effective_mean_shifts),
         "variance_scales": list(effective_variance_scales),
+        "variance_scale_definition": (
+            "Values are standard-deviation multipliers; the variance multiplier is their square."
+        ),
         "check_thresholds": {
             "standardized_mean_difference": 0.25,
             "variance_ratio": 2.0,
@@ -155,7 +158,7 @@ def run_experiment(
         "smoke_gate": {
             "sample_size": sample_size,
             "mean_shift": GATE_MEAN_SHIFT,
-            "variance_scale": GATE_VARIANCE_SCALE,
+            "standard_deviation_multiplier": GATE_VARIANCE_SCALE,
             "minimum_detection_rate": 0.95,
             "maximum_same_distribution_false_positive_rate": 0.10,
             "mean_shift_detection_rate": canonical_mean_rate,
