@@ -176,6 +176,40 @@ binary or multiclass targets. R-squared is reported as `null` when fewer
 than two regression samples are supplied. Evaluation reports contain aggregate
 metrics and metadata, not raw feature rows or targets.
 
+
+## Combined validation workflow
+
+Use the high-level validation method to run reliability checks and calculate
+dataset performance metrics through one entry point. The returned
+ValidationReport keeps its reliability and evaluation sections separate.
+
+    from mlguard import ModelGuard
+
+    report = ModelGuard(model).validate(
+        X_test,
+        y_test,
+        task="classification",
+        checks=("prediction_stability", "noise_robustness"),
+        noise_scale=0.001,
+        random_state=42,
+        metadata={"model_version": "v2", "dataset": "holdout"},
+    )
+
+    print(report.reliability_passed)
+    print(report.evaluation.metrics["accuracy"])
+    print(report.to_dict())
+
+The reliability_passed property is true only when every selected reliability
+check passes. Performance metrics are intentionally separate: MLGuard does
+not impose universal accuracy or error thresholds because acceptable quality
+depends on the task and deployment context. Set application-specific metric
+thresholds in your own evaluation or release process. The combined report
+contains aggregate metrics and metadata, not raw samples.
+
+The checks and their options match ModelGuard.run. For example,
+distribution_shift requires reference_X, and model_comparison requires
+baseline_model.
+
 ## Command-line interface
 
 Install MLGuard in the environment used for your model code:
