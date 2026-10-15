@@ -264,3 +264,42 @@ def test_cli_requires_targets_and_task_together(tmp_path, monkeypatch, capsys):
 
     assert exit_code == 2
     assert "--targets and --task must be provided together" in captured.err
+
+
+
+def test_cli_distribution_shift_accepts_variance_ratio_threshold(
+    tmp_path, monkeypatch, capsys
+):
+    class StableModel:
+        def predict(self, X):
+            return np.zeros(len(X), dtype=int)
+
+    _install_model_module(monkeypatch, "mlguard_cli_variance_model", factory=StableModel)
+    input_file = tmp_path / "candidate.csv"
+    reference_file = tmp_path / "reference.csv"
+    candidate = np.array([[-3.0], [3.0], [-3.0], [3.0]])
+    reference = np.array([[-1.0], [1.0], [-1.0], [1.0]])
+    np.savetxt(input_file, candidate, delimiter=",")
+    np.savetxt(reference_file, reference, delimiter=",")
+
+    exit_code = main(
+        [
+            "check",
+            "--model",
+            "mlguard_cli_variance_model:load_model",
+            "--input",
+            str(input_file),
+            "--reference-input",
+            str(reference_file),
+            "--checks",
+            "distribution_shift",
+            "--variance-ratio-threshold",
+            "10.0",
+        ]
+    )
+    report = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert report["results"][0]["status"] == "passed"
+    assert report["results"][0]["metrics"]["variance_ratios"] == [9.0]
+    assert report["results"][0]["metrics"]["variance_ratio_threshold"] == 10.0
