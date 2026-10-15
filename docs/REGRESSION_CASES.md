@@ -65,9 +65,11 @@ code 2 for setup or artifact errors. If an artifact contains only
 ## Privacy and limitations
 
 A case artifact intentionally contains input values needed to reproduce a
-failure. Treat it like a small data extract: review it for personal,
-proprietary, or regulated information before committing it to a repository or
-uploading it as a CI artifact. MLGuard does not put raw inputs in ordinary
+failure. Review it for personal, proprietary, or regulated information before
+committing it to a repository or uploading it as a CI artifact. Most cases
+contain one sample; model-comparison failures that depend on full-batch errors
+or prediction shapes preserve the original input batch, so those artifacts can
+be much larger and more sensitive. MLGuard does not put raw inputs in ordinary
 JSON reports by default; case contents are included only when explicitly
 requested or saved with `save_regression_cases` / `--cases-output`.
 
