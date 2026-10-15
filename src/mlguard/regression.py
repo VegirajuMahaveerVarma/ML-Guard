@@ -253,13 +253,11 @@ def _replay_one(model: Any | None, case: RegressionCase) -> RegressionReplayResu
                 check_name=case.check_name,
                 status="reproduced" if reproduced else "resolved",
                 summary=(
-                    (
-                        "The model still produces invalid predictions for the saved missing-value input."
-                    )
+                    "The model still produces invalid predictions for the saved "
+                    "missing-value input."
                     if reproduced
-                    else (
-                        "The model now returns valid predictions for the saved missing-value input."
-                    )
+                    else "The model now returns valid predictions for the saved "
+                    "missing-value input."
                 ),
                 details=details,
             )
