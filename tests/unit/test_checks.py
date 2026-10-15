@@ -370,3 +370,28 @@ def test_noise_robustness_rejects_wrong_baseline_prediction_count():
         ModelGuard(TruncatedModel()).run(
             [[0.1], [0.9]], checks=("noise_robustness",), noise_scale=0.0
         )
+
+
+
+def test_distribution_shift_documents_shape_only_blind_spot():
+    from mlguard.checks import distribution_shift
+
+    # Both samples have exactly mean 0 and sample variance 4/3, but their
+    # observed values have different shapes.
+    reference = np.array([[-1.0], [1.0], [-1.0], [1.0]])
+    candidate = np.array([[-np.sqrt(2.0)], [0.0], [0.0], [np.sqrt(2.0)]])
+    result = distribution_shift(reference, candidate)
+
+    assert result.status == "passed"
+    assert result.metrics["mean_shifted_feature_count"] == 0
+    assert result.metrics["variance_shifted_feature_count"] == 0
+
+
+def test_distribution_shift_same_sample_is_not_flagged():
+    from mlguard.checks import distribution_shift
+
+    reference = np.array([[-3.0, 0.0], [-1.0, 1.0], [2.0, 2.0], [4.0, 3.0]])
+    result = distribution_shift(reference, reference.copy())
+
+    assert result.status == "passed"
+    assert result.metrics["shifted_feature_count"] == 0
