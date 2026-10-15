@@ -8,6 +8,7 @@ from mlguard.adapters.base import ModelAdapter
 from mlguard.checks import (
     distribution_shift,
     missing_value_robustness,
+    model_comparison,
     noise_robustness,
     prediction_stability,
 )
@@ -22,6 +23,7 @@ class ModelGuard:
         "noise_robustness": noise_robustness,
         "distribution_shift": distribution_shift,
         "missing_value_robustness": missing_value_robustness,
+        "model_comparison": model_comparison,
     }
 
     def __init__(self, model: ModelAdapter) -> None:
@@ -40,6 +42,11 @@ class ModelGuard:
         reference_X: Any | None = None,
         shift_threshold: float = 0.25,
         missing_fraction: float = 0.05,
+        baseline_model: ModelAdapter | None = None,
+        comparison_mode: str = "auto",
+        atol: float = 1e-8,
+        rtol: float = 1e-5,
+        max_changed_fraction: float = 0.0,
     ) -> SuiteReport:
         """Execute requested checks and return a structured report."""
         if not checks:
@@ -50,11 +57,23 @@ class ModelGuard:
 
         if "distribution_shift" in checks and reference_X is None:
             raise ValueError("reference_X is required for the distribution_shift check.")
+        if "model_comparison" in checks and baseline_model is None:
+            raise ValueError("baseline_model is required for the model_comparison check.")
 
         results: list[TestResult] = []
         for name in checks:
             check = self._CHECKS[name]
-            if name == "distribution_shift":
+            if name == "model_comparison":
+                result = check(
+                    baseline_model,
+                    self.model,
+                    X,
+                    comparison_mode=comparison_mode,
+                    atol=atol,
+                    rtol=rtol,
+                    max_changed_fraction=max_changed_fraction,
+                )
+            elif name == "distribution_shift":
                 result = check(reference_X, X, threshold=shift_threshold)
             elif name == "missing_value_robustness":
                 result = check(
