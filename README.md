@@ -23,7 +23,7 @@ MLGuard is an early-stage Python library for testing whether model predictions r
 
 ## First public alpha release
 
-MLGuard's first release is distributed through GitHub Release assets. After
+MLGuard is in alpha. A GitHub Release is planned, but no public release has been created. After
 the `v0.1.0` release is published, download the wheel from the release page
 and install it locally:
 
@@ -312,11 +312,26 @@ into a copy of those features.
 python -m pytest
 ```
 
+## Controlled failure demo
+
+Run a local smoke evaluation using toy models with deliberately injected failures:
+
+```bash
+python examples/fault_injection_demo.py
+```
+
+The script checks five scenarios and exits nonzero if an expected failure is not
+detected. It uses no remote APIs. This is a reproducible smoke test, not a
+production benchmark or a claim of broad detection accuracy. See
+[controlled evaluation](docs/CONTROLLED_EVALUATION.md) and
+[competitive positioning](docs/COMPETITIVE_POSITIONING.md).
+
+
 ## Roadmap
 
-- More robust input validation and typed configuration.
-- Additional metrics, documentation, and framework adapters.
-- Additional CI templates and richer reporting integrations.
+- Expand controlled evaluation across more models, dataset sizes, and random seeds.
+- Evaluate false-positive behavior on benign and shape-only distribution changes.
+- Add further framework adapters only where they improve real developer workflows.
 
 ## Privacy
 
