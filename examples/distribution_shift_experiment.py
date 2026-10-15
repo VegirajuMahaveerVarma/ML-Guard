@@ -22,7 +22,7 @@ GATE_VARIANCE_SCALE = 2.0
 
 
 def _flagged(reference: np.ndarray, candidate: np.ndarray) -> bool:
-    """Return whether the configured mean/variance screen flags these samples."""
+    """Return whether the configured mean/variance/shape screen flags these samples."""
     return distribution_shift(reference, candidate).status == "failed"
 
 
@@ -154,6 +154,7 @@ def run_experiment(
         "check_thresholds": {
             "standardized_mean_difference": 0.25,
             "variance_ratio": 2.0,
+            "shape_alpha": 0.05,
         },
         "smoke_gate": {
             "sample_size": sample_size,
@@ -171,8 +172,8 @@ def run_experiment(
         "interpretation": (
             "Synthetic experiments only. Results describe these distributions, "
             "thresholds, sample sizes, and seeds; they are not estimates of general "
-            "or production performance. The shape-only case documents a known blind "
-            "spot: matching means and variances can still hide a changed distribution."
+            "or production performance. Shape-only detection uses a sample-size-aware "
+            "empirical-CDF threshold and may miss subtle changes at small sample sizes."
         ),
     }
 
