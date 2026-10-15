@@ -65,7 +65,7 @@ def run_experiment(
 
     effective_mean_shifts = tuple(sorted(set((*mean_shifts, GATE_MEAN_SHIFT))))
     effective_variance_scales = tuple(
-        sorted(set((*variance_scales, GATE_VARIANCE_SCALE))
+        sorted(set((*variance_scales, GATE_VARIANCE_SCALE)))
     )
     rng = np.random.default_rng(seed)
     results_by_size: dict[str, dict] = {}
