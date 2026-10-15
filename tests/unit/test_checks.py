@@ -82,7 +82,6 @@ def test_distribution_shift_rejects_negative_threshold():
         distribution_shift([[1.0]], [[2.0]], threshold=-0.1)
 
 
-
 class NaNRejectingModel:
     def predict(self, X):
         values = np.asarray(X, dtype=float)
