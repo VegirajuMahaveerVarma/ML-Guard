@@ -329,11 +329,11 @@ python examples/distribution_shift_experiment.py
 ```
 
 The experiment reports detection and false-positive rates across multiple sample
-sizes and mean shifts and standard-deviation multipliers for variance changes,
-while documenting the known blind spot
-for shape-only changes. Adjust the sweep with --additional-sample-sizes,
---mean-shifts, and --variance-scales (standard-deviation multipliers). These are controlled synthetic checks, not production
-benchmarks or proof of general detection accuracy. See
+sizes, mean shifts, and standard-deviation multipliers for variance changes. It
+also documents the known blind spot for shape-only changes. Adjust the sweep with
+--additional-sample-sizes, --mean-shifts, and --variance-scales (standard-deviation
+multipliers). These are controlled synthetic checks, not production benchmarks
+or proof of general detection accuracy. See
 [controlled evaluation](docs/CONTROLLED_EVALUATION.md) and
 [competitive positioning](docs/COMPETITIVE_POSITIONING.md).
 
