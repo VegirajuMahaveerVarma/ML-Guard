@@ -33,11 +33,28 @@ jobs:
         run: python -m build
       - name: Validate distribution metadata
         run: python -m twine check --strict dist/*.whl dist/*.tar.gz
-      - name: Smoke-test installed wheel outside the checkout
+      - name: Smoke-test wheel in a clean virtual environment
         shell: bash
         run: |
-          install_dir="$RUNNER_TEMP/mlguard-wheel-check"
-          python -m pip install --no-deps --target "$install_dir" dist/*.whl
+          venv_dir="$RUNNER_TEMP/mlguard-wheel-venv"
+          python -m venv "$venv_dir"
+          "$venv_dir/bin/python" -m pip install dist/*.whl
+          "$venv_dir/bin/python" -m pip check
           cd "$RUNNER_TEMP"
-          PYTHONPATH="$install_dir" python -c 'import mlguard; print("Installed version:", mlguard.__version__)'
-          PYTHONPATH="$install_dir" python -m mlguard --version
+          "$venv_dir/bin/python" - <<'PY'
+          import numpy as np
+          from mlguard import ModelGuard, __version__
+
+          class ThresholdModel:
+              def predict(self, X):
+                  return (np.asarray(X)[:, 0] > 0.5).astype(int)
+
+          report = ModelGuard(ThresholdModel()).run(
+              np.array([[0.1], [0.9]]),
+              checks=("prediction_stability",),
+          )
+          assert report.results[0].status == "passed"
+          print("Installed version:", __version__)
+          PY
+          "$venv_dir/bin/mlguard" --version
+          "$venv_dir/bin/mlguard" list-checks
