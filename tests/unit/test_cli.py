@@ -303,3 +303,39 @@ def test_cli_distribution_shift_accepts_variance_ratio_threshold(
     assert report["results"][0]["status"] == "passed"
     assert report["results"][0]["metrics"]["variance_ratios"] == [9.0]
     assert report["results"][0]["metrics"]["variance_ratio_threshold"] == 10.0
+
+
+
+def test_cli_stability_repeats_detects_third_call_change(tmp_path, monkeypatch, capsys):
+    class ThirdCallChangesModel:
+        def __init__(self):
+            self.calls = 0
+
+        def predict(self, X):
+            self.calls += 1
+            return np.full(len(X), 0 if self.calls < 3 else 1, dtype=int)
+
+    _install_model_module(
+        monkeypatch, "mlguard_cli_stability_model", factory=ThirdCallChangesModel
+    )
+    input_file = tmp_path / "features.csv"
+    np.savetxt(input_file, [[0.1], [0.9]], delimiter=",")
+
+    exit_code = main(
+        [
+            "check",
+            "--model",
+            "mlguard_cli_stability_model:load_model",
+            "--input",
+            str(input_file),
+            "--checks",
+            "prediction_stability",
+            "--stability-repeats",
+            "3",
+        ]
+    )
+    report = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert report["results"][0]["status"] == "failed"
+    assert report["results"][0]["metrics"]["repeats"] == 3
