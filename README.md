@@ -16,6 +16,7 @@ MLGuard is an early-stage Python library for testing whether model predictions r
 - Reference-versus-candidate feature distribution screening using standardized mean differences.
 - Missing-value robustness checks that report whether a model rejects NaNs or emits invalid predictions.
 - Baseline-versus-candidate prediction comparisons for model updates.
+- Dataset-level classification and regression metrics against ground-truth targets.
 - Structured report objects that can be converted to JSON-compatible dictionaries.
 - Local execution; no telemetry or network calls in the library.
 - Command-line interface for running checks against local numeric CSV files.
@@ -131,6 +132,49 @@ Set `comparison_mode="classification"` for classifiers that return
 floating-point class labels, or `comparison_mode="regression"` for numeric
 regression outputs. Numeric differences are descriptive and do not directly
 measure model quality or accuracy.
+
+## Dataset performance evaluation
+
+Reliability checks inspect model behavior; performance evaluation compares
+predictions with known ground-truth targets. MLGuard provides both without
+requiring scikit-learn for metric computation.
+
+For classification, the report includes accuracy, precision, recall, F1,
+a confusion matrix, and per-class support and scores. The default averaging
+mode is macro; use `weighted` or `micro` when appropriate.
+
+```python
+from mlguard import ModelGuard
+
+# model can be any fitted object exposing predict(X)
+report = ModelGuard(model).evaluate(
+    X_test,
+    y_test,
+    task="classification",
+    average="macro",
+    metadata={"dataset": "validation"},
+)
+print(report.to_dict())
+```
+
+For regression, evaluation reports MAE, MSE, RMSE, R-squared, and maximum
+absolute error:
+
+```python
+report = ModelGuard(model).evaluate(
+    X_test,
+    y_test,
+    task="regression",
+    metadata={"dataset": "holdout"},
+)
+print(report.to_dict()["metrics"])
+```
+
+Evaluation inputs must contain one target per sample. Regression currently
+supports a single numeric target, and classification supports single-label
+binary or multiclass targets. R-squared is reported as `null` when fewer
+than two regression samples are supplied. Evaluation reports contain aggregate
+metrics and metadata, not raw feature rows or targets.
 
 ## Command-line interface
 
