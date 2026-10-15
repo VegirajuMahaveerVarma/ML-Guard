@@ -81,12 +81,15 @@ def test_model_comparison_detects_candidate_model_changes(sample_X):
             import numpy as np
             return np.ones(len(X), dtype=int)
 
-    from tests.conftest import ConstantModel
+    class AlwaysZeroModel:
+        def predict(self, X):
+            import numpy as np
+            return np.zeros(len(X), dtype=int)
 
     report = ModelGuard(AlwaysOneModel()).run(
         sample_X,
         checks=("model_comparison",),
-        baseline_model=ConstantModel(),
+        baseline_model=AlwaysZeroModel(),
         comparison_mode="classification",
     )
     assert report.results[0].status == "failed"
