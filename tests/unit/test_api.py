@@ -54,3 +54,40 @@ def test_missing_value_robustness_is_exposed_through_model_guard(constant_model,
     assert report.results[0].name == "missing_value_robustness"
     assert report.results[0].status == "passed"
     assert report.results[0].metrics["missing_cells"] == 2
+
+
+
+def test_model_comparison_requires_baseline_model(constant_model, sample_X):
+    with pytest.raises(ValueError, match="baseline_model is required"):
+        ModelGuard(constant_model).run(
+            sample_X, checks=("model_comparison",)
+        )
+
+
+def test_model_comparison_is_available_through_model_guard(constant_model, sample_X):
+    report = ModelGuard(constant_model).run(
+        sample_X,
+        checks=("model_comparison",),
+        baseline_model=constant_model,
+    )
+    assert report.results[0].name == "model_comparison"
+    assert report.results[0].status == "passed"
+    assert report.results[0].metrics["changed_samples"] == 0
+
+
+def test_model_comparison_detects_candidate_model_changes(sample_X):
+    class AlwaysOneModel:
+        def predict(self, X):
+            import numpy as np
+            return np.ones(len(X), dtype=int)
+
+    from tests.conftest import ConstantModel
+
+    report = ModelGuard(AlwaysOneModel()).run(
+        sample_X,
+        checks=("model_comparison",),
+        baseline_model=ConstantModel(),
+        comparison_mode="classification",
+    )
+    assert report.results[0].status == "failed"
+    assert report.results[0].metrics["changed_samples"] == len(sample_X)
