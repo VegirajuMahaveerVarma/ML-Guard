@@ -1,8 +1,11 @@
 """Tests for scikit-learn estimators, Pipelines, and DataFrame inputs."""
 
 import numpy as np
-import pandas as pd
 import pytest
+
+pytest.importorskip("sklearn")
+pd = pytest.importorskip("pandas")
+
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
