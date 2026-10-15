@@ -26,7 +26,7 @@ class SklearnAdapter:
         except ImportError as exc:
             raise ImportError(
                 "SklearnAdapter requires scikit-learn. Install it with "
-                "Run: python -m pip install -e .[sklearn]"
+                "Install with: python -m pip install -e .[sklearn]."
             ) from exc
 
         try:
