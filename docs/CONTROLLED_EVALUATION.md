@@ -59,14 +59,14 @@ The JSON report gives false-positive and detection rates for each combination
 of sample size and shift strength. Its smoke gate is evaluated at the canonical
 sample size (512 by default): it requires at least 95% detection for a mean shift
 of 0.75 standard deviations and a standard-deviation multiplier of 2.0 (four
-times the variance), and no more than
-10% flags for same-distribution controls. These are deliberately simple checks to prevent gross
-regressions, not universal acceptance criteria or statistically precise
-performance estimates.
+times the variance), and no more than 10% flags for same-distribution controls.
+These are deliberately simple checks to prevent gross regressions, not universal
+acceptance criteria or statistically precise performance estimates.
 
 The shape-only case is included to make an important limitation visible: a
 screen based on means and variances can miss a distribution change that preserves
 both. The experiment accepts --trials, --sample-size, --additional-sample-sizes,
---mean-shifts, --variance-scales (standard-deviation multipliers), and --seed for reproducible parameter sweeps.
-It remains a synthetic, descriptive evaluation; further work should add more
-distribution families and public datasets before broad reliability claims.
+--mean-shifts, --variance-scales (standard-deviation multipliers), and --seed
+for reproducible parameter sweeps. It remains a synthetic, descriptive
+evaluation; further work should add more distribution families and public
+datasets before broad reliability claims.
