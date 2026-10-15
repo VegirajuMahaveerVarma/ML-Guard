@@ -4,14 +4,16 @@
 
 MLGuard is an early-stage Python library for testing whether model predictions remain stable and robust under controlled input changes. Its core functionality runs locally; it does not upload models, datasets, or reports.
 
-> **Project status:** Alpha. The current implementation includes repeated-prediction stability, seeded Gaussian-noise robustness, and numeric feature-distribution shift screening. APIs and reports may evolve.
+> **Project status:** Alpha. The current implementation includes repeated-prediction stability, seeded Gaussian-noise robustness, and numeric feature-distribution shift screening, and missing-value behavior checks. APIs and reports may evolve.
 
 ## Features
 
 - Framework-light model interface: any object with a `predict(X)` method can be checked.
 - Optional scikit-learn adapter.
 - Prediction stability checks using repeated calls.
-- Gaussian-noise robustness checks with reproducible random seeds.\n- Reference-versus-candidate feature distribution screening using standardized mean differences.
+- Gaussian-noise robustness checks with reproducible random seeds.
+- Reference-versus-candidate feature distribution screening using standardized mean differences.
+- Missing-value robustness checks that report whether a model rejects NaNs or emits invalid predictions.
 - Structured report objects that can be converted to JSON-compatible dictionaries.
 - Local execution; no telemetry or network calls in the library.
 
@@ -69,9 +71,11 @@ A result with status `failed` means a check detected a change relative to its te
 | Check | What it measures |
 |---|---|
 | `prediction_stability` | Agreement between two predictions on identical input |
-| `noise_robustness` | Agreement between baseline predictions and predictions after seeded Gaussian noise |\n| `distribution_shift` | Per-feature standardized mean differences between reference and candidate samples |
+| `noise_robustness` | Agreement between baseline predictions and predictions after seeded Gaussian noise |
+| `distribution_shift` | Per-feature standardized mean differences between reference and candidate samples |
+| `missing_value_robustness` | Whether a model accepts missing feature values and returns valid predictions |
 
-Noise is applied to a numeric copy of the input; the caller's original array is not intentionally mutated. `noise_scale` is the absolute standard deviation of the added noise, not a feature-normalized percentage.
+Noise is applied to a numeric copy of the input; the caller's original array is not intentionally mutated. `noise_scale` is the absolute standard deviation of the added noise, not a feature-normalized percentage. The `missing_value_robustness` check also requires a numeric 2D feature matrix and injects NaNs into a copy. Run it explicitly with `checks=("missing_value_robustness",)` and optionally set `missing_fraction` (default `0.05`).
 
 ## Run tests
 
@@ -82,8 +86,6 @@ python -m pytest
 ## Roadmap
 
 - More robust input validation and typed configuration.
-- Missing-value behavior checks.
-- Distribution-shift comparisons.
 - Baseline-versus-candidate model regression checks.
 - Additional metrics, documentation, and framework adapters.
 - CLI and CI integrations after the core API stabilizes.
