@@ -321,8 +321,17 @@ python examples/fault_injection_demo.py
 ```
 
 The script checks five scenarios and exits nonzero if an expected failure is not
-detected. It uses no remote APIs. This is a reproducible smoke test, not a
-production benchmark or a claim of broad detection accuracy. See
+detected. It uses no remote APIs. Run the repeated synthetic distribution-shift
+experiment as well:
+
+```bash
+python examples/distribution_shift_experiment.py
+```
+
+The experiment reports detection rates for injected mean/variance changes and
+flags on same-distribution controls, while also documenting the known blind spot
+for shape-only changes. These are controlled synthetic checks, not production
+benchmarks or proof of general detection accuracy. See
 [controlled evaluation](docs/CONTROLLED_EVALUATION.md) and
 [competitive positioning](docs/COMPETITIVE_POSITIONING.md).
 
