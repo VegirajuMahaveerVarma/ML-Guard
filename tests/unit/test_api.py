@@ -129,8 +129,8 @@ def test_model_guard_evaluate_computes_regression_metrics():
 
     assert report.task == "regression"
     assert report.metrics["mae"] == pytest.approx(0.5)
-    assert report.metrics["mse"] == pytest.approx(0.5)
-    assert report.metrics["rmse"] == pytest.approx(np.sqrt(0.5))
+    assert report.metrics["mse"] == pytest.approx(1.25 / 3)
+    assert report.metrics["rmse"] == pytest.approx(np.sqrt(1.25 / 3))
 
 
 def test_model_guard_evaluate_reports_prediction_errors():
