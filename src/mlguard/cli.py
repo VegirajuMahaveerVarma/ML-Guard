@@ -203,6 +203,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     check_parser.add_argument("--noise-scale", type=float, default=0.01)
     check_parser.add_argument("--random-state", type=int, default=0)
+    check_parser.add_argument("--stability-repeats", type=int, default=3)
     check_parser.add_argument("--shift-threshold", type=float, default=0.25)
     check_parser.add_argument("--variance-ratio-threshold", type=float, default=2.0)
     check_parser.add_argument("--missing-fraction", type=float, default=0.05)
@@ -317,6 +318,7 @@ def _run_checks(args: argparse.Namespace) -> int:
         "checks": checks,
         "noise_scale": args.noise_scale,
         "random_state": args.random_state,
+        "stability_repeats": args.stability_repeats,
         "metadata": metadata,
         "reference_X": reference_X,
         "shift_threshold": args.shift_threshold,
