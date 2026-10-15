@@ -21,6 +21,21 @@ def _predict(model: ModelAdapter, X: Any) -> np.ndarray:
         raise RuntimeError("Model prediction failed.") from exc
 
 
+def _expected_sample_count(X: Any) -> int | None:
+    """Read a batch size without coercing framework-specific inputs to NumPy."""
+    shape = getattr(X, "shape", None)
+    if shape is not None:
+        try:
+            if len(shape) > 0:
+                return int(shape[0])
+        except (TypeError, IndexError):
+            pass
+    try:
+        return len(X)
+    except (TypeError, AttributeError):
+        return None
+
+
 def _equal_predictions(left: np.ndarray, right: np.ndarray) -> np.ndarray:
     """Compare predictions row-wise, supporting numeric and object labels."""
     if left.shape != right.shape:
@@ -60,11 +75,15 @@ def prediction_stability(
     if isinstance(repeats, bool) or not isinstance(repeats, int) or repeats < 2:
         raise InputValidationError("repeats must be an integer of at least 2.")
 
-    input_array = as_array(X, name="X")
+    expected_samples = _expected_sample_count(X)
     predictions = []
     for _ in range(repeats):
         prediction = _predict(model, X)
-        validate_same_sample_count(input_array, prediction)
+        if expected_samples is not None and prediction.shape[0] != expected_samples:
+            raise InputValidationError(
+                "The model returned "
+                f"{prediction.shape[0]} predictions for {expected_samples} input samples."
+            )
         predictions.append(prediction)
 
     first = predictions[0]
@@ -112,6 +131,7 @@ def noise_robustness(
     original = as_array(X, name="X")
     numeric = require_numeric(original, name="X")
     baseline = _predict(model, X)
+    validate_same_sample_count(numeric, baseline)
     rng = np.random.default_rng(random_state)
     perturbed = numeric + rng.normal(0.0, noise_scale, size=numeric.shape)
     changed_input = _preserve_input_container(X, perturbed)
@@ -459,6 +479,30 @@ def model_comparison(
                     message="The baseline or candidate model failed to produce predictions.",
                     severity="error",
                     details={"error_type": error_type},
+                ),
+            ),
+        )
+
+    expected_samples = _expected_sample_count(X)
+    if expected_samples is not None and (
+        baseline.shape[0] != expected_samples or candidate.shape[0] != expected_samples
+    ):
+        metrics = {
+            "input_sample_count": expected_samples,
+            "baseline_sample_count": int(baseline.shape[0]),
+            "candidate_sample_count": int(candidate.shape[0]),
+        }
+        return TestResult(
+            name="model_comparison",
+            status="error",
+            summary="One or both models returned a prediction count that does not match the input.",
+            metrics=metrics,
+            findings=(
+                Finding(
+                    code="MODEL_PREDICTION_COUNT_MISMATCH",
+                    message="Each model must return one prediction per input sample.",
+                    severity="error",
+                    details=metrics,
                 ),
             ),
         )
