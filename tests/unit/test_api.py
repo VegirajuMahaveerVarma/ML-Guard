@@ -1,5 +1,7 @@
 import pytest
 
+import numpy as np
+
 from mlguard import ModelGuard
 
 
@@ -94,3 +96,49 @@ def test_model_comparison_detects_candidate_model_changes(sample_X):
     )
     assert report.results[0].status == "failed"
     assert report.results[0].metrics["changed_samples"] == len(sample_X)
+
+
+
+def test_model_guard_evaluate_computes_classification_metrics(constant_model):
+    report = ModelGuard(constant_model).evaluate(
+        [[0.1], [0.2], [0.3]],
+        [0, 0, 1],
+        task="classification",
+        metadata={"split": "validation"},
+    )
+
+    assert report.task == "classification"
+    assert report.sample_count == 3
+    assert report.metrics["accuracy"] == pytest.approx(2 / 3)
+    assert report.metrics["precision"] == pytest.approx(1 / 3)
+    assert report.metrics["recall"] == pytest.approx(0.5)
+    assert report.metadata["split"] == "validation"
+
+
+def test_model_guard_evaluate_computes_regression_metrics():
+    class FirstFeatureRegressor:
+        def predict(self, X):
+            return np.asarray(X, dtype=float)[:, 0]
+
+    X = [[1.0], [2.0], [3.0]]
+    report = ModelGuard(FirstFeatureRegressor()).evaluate(
+        X,
+        [1.0, 2.5, 2.0],
+        task="regression",
+    )
+
+    assert report.task == "regression"
+    assert report.metrics["mae"] == pytest.approx(0.5)
+    assert report.metrics["mse"] == pytest.approx(0.5)
+    assert report.metrics["rmse"] == pytest.approx(np.sqrt(0.5))
+
+
+def test_model_guard_evaluate_reports_prediction_errors():
+    from mlguard.exceptions import ModelExecutionError
+
+    class BrokenModel:
+        def predict(self, X):
+            raise RuntimeError("deliberate test failure")
+
+    with pytest.raises(ModelExecutionError, match="evaluation predictions"):
+        ModelGuard(BrokenModel()).evaluate([[1.0]], [1.0], task="regression")
