@@ -1,7 +1,7 @@
 # Competitive positioning
 
-**Status:** internal planning note, reviewed 15 October 2026. This is a feature-
-scope comparison based on official project documentation, not an independent
+**Status:** engineering note, reviewed 15 October 2026. This is a feature-scope
+comparison based on official project documentation, not an independent
 performance benchmark.
 
 ## Existing tools
