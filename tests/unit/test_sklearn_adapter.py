@@ -3,14 +3,15 @@
 import numpy as np
 import pytest
 
-pytest.importorskip("sklearn")
-pd = pytest.importorskip("pandas")
-
-from sklearn.compose import ColumnTransformer
-from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+try:
+    import pandas as pd
+    from sklearn.compose import ColumnTransformer
+    from sklearn.impute import SimpleImputer
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import StandardScaler
+except ImportError:
+    pytest.skip("Install mlguard[dev,sklearn] to run scikit-learn tests.", allow_module_level=True)
 
 from mlguard import ModelGuard, SklearnAdapter
 
