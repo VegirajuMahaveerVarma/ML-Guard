@@ -4,7 +4,7 @@
 
 MLGuard is an early-stage Python library for testing whether model predictions remain stable and robust under controlled input changes. Its core functionality runs locally; it does not upload models, datasets, or reports.
 
-> **Project status:** Alpha. The current implementation includes four checks: repeated-prediction stability, seeded Gaussian-noise robustness, feature-distribution shift screening, and missing-value handling. APIs and reports may evolve.
+> **Project status:** Alpha. The current implementation includes five checks: repeated-prediction stability, seeded Gaussian-noise robustness, feature-distribution shift screening, missing-value handling, and baseline-versus-candidate model comparison. APIs and reports may evolve.
 
 ## Features
 
@@ -14,6 +14,7 @@ MLGuard is an early-stage Python library for testing whether model predictions r
 - Gaussian-noise robustness checks with reproducible random seeds.
 - Reference-versus-candidate feature distribution screening using standardized mean differences.
 - Missing-value robustness checks that report whether a model rejects NaNs or emits invalid predictions.
+- Baseline-versus-candidate prediction comparisons for model updates.
 - Structured report objects that can be converted to JSON-compatible dictionaries.
 - Local execution; no telemetry or network calls in the library.
 
@@ -74,8 +75,37 @@ A result with status `failed` means a check detected a change relative to its te
 | `noise_robustness` | Agreement between baseline predictions and predictions after seeded Gaussian noise |
 | `distribution_shift` | Per-feature standardized mean differences between reference and candidate samples |
 | `missing_value_robustness` | Whether a model accepts missing feature values and returns valid predictions |
+| `model_comparison` | Whether a candidate model's predictions differ from a baseline model |
 
 Noise is applied to a numeric copy of the input; the caller's original array is not intentionally mutated. `noise_scale` is the absolute standard deviation of the added noise, not a feature-normalized percentage. The `missing_value_robustness` check also requires a numeric 2D feature matrix and injects NaNs into a copy. Run it explicitly with `checks=("missing_value_robustness",)` and optionally set `missing_fraction` (default `0.05`).
+
+### Compare a candidate model with a baseline
+
+Pass the candidate model to `ModelGuard` and provide the existing model as
+`baseline_model`. By default, changed predictions fail the check. Use
+`max_changed_fraction` when a known amount of change is acceptable.
+
+```python
+from mlguard import ModelGuard
+
+report = ModelGuard(candidate_model).run(
+    X,
+    checks=("model_comparison",),
+    baseline_model=baseline_model,
+    comparison_mode="auto",
+    atol=1e-8,
+    rtol=1e-5,
+    max_changed_fraction=0.0,
+)
+print(report.to_dict())
+```
+
+In auto mode, floating-point numeric outputs are compared using numeric
+tolerances; integer, boolean, and label-like outputs are compared exactly.
+Set `comparison_mode="classification"` for classifiers that return
+floating-point class labels, or `comparison_mode="regression"` for numeric
+regression outputs. Numeric differences are descriptive and do not directly
+measure model quality or accuracy.
 
 ## Run tests
 
@@ -86,7 +116,6 @@ python -m pytest
 ## Roadmap
 
 - More robust input validation and typed configuration.
-- Baseline-versus-candidate model regression checks.
 - Additional metrics, documentation, and framework adapters.
 - CLI and CI integrations after the core API stabilizes.
 
