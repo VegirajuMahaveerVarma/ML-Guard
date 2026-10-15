@@ -34,9 +34,13 @@ Before making broad reliability claims, extend this evaluation with:
 - distribution-shape changes with matching means and variances;
 - repeated runs with summarized detection rate, false-positive rate, and runtime.
 
-The variance-shift check intentionally measures per-feature mean and sample
-variance changes. It is a descriptive signal rather than a statistical
-hypothesis test and may miss shape-only changes. See
+The distribution-shift check measures per-feature mean and sample-variance
+changes and also compares empirical cumulative distribution functions (CDFs).
+For shape, it uses a conservative two-sample DKW-style distance threshold that
+depends on both sample sizes; a Bonferroni correction allocates the configured
+family-wise false-positive budget across features. The default `shape_alpha=0.05`
+is not a returned p-value, and low sample sizes can produce thresholds too
+conservative to detect even visible shape differences. See
 [Competitive positioning](COMPETITIVE_POSITIONING.md) for the scope of the
 current design relative to established tools.
 
@@ -63,9 +67,11 @@ times the variance), and no more than 10% flags for same-distribution controls.
 These are deliberately simple checks to prevent gross regressions, not universal
 acceptance criteria or statistically precise performance estimates.
 
-The shape-only case is included to make an important limitation visible: a
-screen based on means and variances can miss a distribution change that preserves
-both. The experiment accepts --trials, --sample-size, --additional-sample-sizes,
+The shape-only case exercises the empirical-CDF screen on a distribution change
+that preserves mean and variance. Detection still depends on sample size and
+effect magnitude, so a low shape-only detection rate is evidence of limited
+power for this scenario rather than proof of no distribution change. The
+experiment accepts --trials, --sample-size, --additional-sample-sizes,
 --mean-shifts, --variance-scales (standard-deviation multipliers), and --seed
 for reproducible parameter sweeps. It remains a synthetic, descriptive
 evaluation; further work should add more distribution families and public
