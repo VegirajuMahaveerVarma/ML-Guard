@@ -118,15 +118,26 @@ def distribution_shift(
     candidate_X: Any,
     *,
     threshold: float = 0.25,
+    variance_ratio_threshold: float = 2.0,
 ) -> TestResult:
-    """Compare numeric feature distributions using standardized mean differences.
+    """Screen numeric feature distributions for mean and variance changes.
 
-    reference_X is the reference sample and candidate_X is the newer sample.
-    Each row is a sample and each column a feature. This is a descriptive
-    screening check, not a statistical hypothesis test.
+    Mean changes are measured with standardized mean differences. When both
+    samples contain at least two rows, spread changes are also screened using
+    the ratio of the larger sample variance to the smaller. A variance ratio
+    greater than the configured threshold flags a spread change. If only one
+    variance is zero, the ratio is unbounded and the feature is flagged.
+
+    This is descriptive screening, not a statistical hypothesis test. It does
+    not detect every possible distribution change (for example, some shape-only
+    changes with matching means and variances).
     """
     if not np.isfinite(threshold) or threshold < 0:
         raise InputValidationError("threshold must be a finite, non-negative number.")
+    if not np.isfinite(variance_ratio_threshold) or variance_ratio_threshold <= 1:
+        raise InputValidationError(
+            "variance_ratio_threshold must be a finite number greater than 1."
+        )
 
     reference = require_numeric(as_array(reference_X, name="reference_X"), name="reference_X")
     candidate = require_numeric(as_array(candidate_X, name="candidate_X"), name="candidate_X")
@@ -149,45 +160,107 @@ def distribution_shift(
         if candidate.shape[0] > 1
         else np.zeros(candidate.shape[1])
     )
-    pooled_scale = np.sqrt((ref_var + cand_var) / 2.0)
-    differences = np.abs(cand_mean - ref_mean)
+    if not (
+        np.isfinite(ref_mean).all()
+        and np.isfinite(cand_mean).all()
+        and np.isfinite(ref_var).all()
+        and np.isfinite(cand_var).all()
+    ):
+        raise InputValidationError(
+            "Feature magnitudes are too large to compare safely; rescale the inputs."
+        )
+
+    pooled_scale = np.sqrt(ref_var / 2.0 + cand_var / 2.0)
+    mean_differences = np.abs(cand_mean - ref_mean)
     standardized = np.divide(
-        differences,
+        mean_differences,
         pooled_scale,
-        out=np.where(differences == 0, 0.0, np.inf),
+        out=np.where(mean_differences == 0, 0.0, np.inf),
         where=pooled_scale > 0,
     )
-    shifted_indices = np.flatnonzero(standardized > threshold)
-    shifted = shifted_indices.size > 0
+    mean_shifted = standardized > threshold
+
+    variance_check_available = reference.shape[0] > 1 and candidate.shape[0] > 1
+    variance_ratios: list[float | None] = [None] * int(reference.shape[1])
+    variance_shifted = np.zeros(reference.shape[1], dtype=bool)
+    if variance_check_available:
+        for index, (ref_value, candidate_value) in enumerate(
+            zip(ref_var, cand_var, strict=True)
+        ):
+            if ref_value == 0.0 and candidate_value == 0.0:
+                ratio = 1.0
+            elif ref_value == 0.0 or candidate_value == 0.0:
+                # None denotes an unbounded ratio; the separate flag preserves
+                # the actionable result without putting Infinity in JSON output.
+                ratio = None
+                variance_shifted[index] = True
+            else:
+                raw_ratio = float(max(ref_value, candidate_value) / min(ref_value, candidate_value))
+                if np.isfinite(raw_ratio):
+                    ratio = raw_ratio
+                    variance_shifted[index] = ratio > variance_ratio_threshold
+                else:
+                    ratio = None
+                    variance_shifted[index] = True
+            variance_ratios[index] = ratio
+
+    shifted_indices = np.flatnonzero(mean_shifted | variance_shifted)
     findings = tuple(
         Finding(
             code="FEATURE_DISTRIBUTION_SHIFT",
-            message=f"Feature {int(index)} exceeds the standardized mean-difference threshold.",
+            message=f"Feature {int(index)} exceeds a configured distribution-shift threshold.",
             details={
                 "feature_index": int(index),
-                "standardized_mean_difference": float(standardized[index]),
+                "shift_types": [
+                    shift_type
+                    for shift_type, is_shifted in (
+                        ("mean", bool(mean_shifted[index])),
+                        ("variance", bool(variance_shifted[index])),
+                    )
+                    if is_shifted
+                ],
+                "standardized_mean_difference": (
+                    float(standardized[index]) if np.isfinite(standardized[index]) else None
+                ),
+                "variance_ratio": variance_ratios[index],
                 "threshold": float(threshold),
+                "variance_ratio_threshold": float(variance_ratio_threshold),
             },
         )
         for index in shifted_indices
     )
+    finite_standardized = standardized[np.isfinite(standardized)]
+    max_standardized = (
+        float(finite_standardized.max(initial=0.0))
+        if finite_standardized.size == standardized.size
+        else None
+    )
+    variance_shift_count = int(variance_shifted.sum())
+    mean_shift_count = int(mean_shifted.sum())
+    shifted_count = int(shifted_indices.size)
     return TestResult(
         name="distribution_shift",
-        status="failed" if shifted else "passed",
+        status="failed" if shifted_count else "passed",
         summary=(
-            f"{int(shifted_indices.size)} feature(s) exceeded the shift "
-            f"threshold of {threshold:.3f}."
+            f"{shifted_count} feature(s) flagged: {mean_shift_count} mean shift(s), "
+            f"{variance_shift_count} variance shift(s)."
         ),
         metrics={
             "threshold": float(threshold),
-            "shifted_feature_count": int(shifted_indices.size),
+            "variance_ratio_threshold": float(variance_ratio_threshold),
+            "shifted_feature_count": shifted_count,
+            "mean_shifted_feature_count": mean_shift_count,
+            "variance_shifted_feature_count": variance_shift_count,
+            "variance_check_available": variance_check_available,
             "feature_count": int(reference.shape[1]),
-            "max_standardized_mean_difference": float(standardized.max(initial=0.0)),
-            "standardized_mean_differences": [float(value) for value in standardized],
+            "max_standardized_mean_difference": max_standardized,
+            "standardized_mean_differences": [
+                float(value) if np.isfinite(value) else None for value in standardized
+            ],
+            "variance_ratios": variance_ratios,
         },
         findings=findings,
     )
-
 
 def missing_value_robustness(
     model: ModelAdapter,
