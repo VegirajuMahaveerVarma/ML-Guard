@@ -94,6 +94,7 @@ def prediction_stability(
         findings=findings,
     )
 
+
 def noise_robustness(
     model: ModelAdapter,
     X: Any,
