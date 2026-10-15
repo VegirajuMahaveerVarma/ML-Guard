@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from mlguard.adapters.base import ModelAdapter
+from mlguard.evaluation import Average, Task, evaluate_predictions
+from mlguard.exceptions import ModelExecutionError
 from mlguard.checks import (
     distribution_shift,
     missing_value_robustness,
@@ -12,7 +15,7 @@ from mlguard.checks import (
     noise_robustness,
     prediction_stability,
 )
-from mlguard.results import SuiteReport, TestResult
+from mlguard.results import EvaluationReport, SuiteReport, TestResult
 
 
 class ModelGuard:
@@ -42,6 +45,38 @@ class ModelGuard:
         if not callable(getattr(model, "predict", None)):
             raise TypeError("model must expose a callable predict(X) method")
         self.model = model
+
+    def evaluate(
+        self,
+        X: Any,
+        y_true: Any,
+        *,
+        task: Task,
+        average: Average = "macro",
+        labels: Sequence[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> EvaluationReport:
+        """Evaluate predictions against ground-truth labels or target values.
+
+        Classification reports include accuracy, precision, recall, F1,
+        confusion matrix, and per-class metrics. Regression reports include
+        MAE, MSE, RMSE, R-squared, and maximum absolute error.
+        """
+        try:
+            y_pred = self.model.predict(X)
+        except Exception as exc:
+            raise ModelExecutionError(
+                "The model failed while producing evaluation predictions."
+            ) from exc
+
+        return evaluate_predictions(
+            y_true,
+            y_pred,
+            task=task,
+            average=average,
+            labels=labels,
+            metadata=metadata,
+        )
 
     def run(
         self,
