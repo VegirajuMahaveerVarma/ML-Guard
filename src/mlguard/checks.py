@@ -249,7 +249,7 @@ def missing_value_robustness(
         invalid_predictions = sum(
             value is None
             or (
-                isinstance(value, (float, np.floating, complex, np.complexfloating))
+                isinstance(value, float | np.floating | complex | np.complexfloating)
                 and not np.isfinite(value)
             )
             for value in predictions.flat
