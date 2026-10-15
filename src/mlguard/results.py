@@ -91,6 +91,21 @@ class SuiteReport:
 
 
 @dataclass(frozen=True)
+class MetricGateResult:
+    """Outcome of one configured minimum or maximum performance threshold."""
+
+    metric: str
+    operator: Literal[">=", "<="]
+    threshold: float
+    actual: float | None
+    passed: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-compatible metric threshold result."""
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class ValidationReport:
     """Combined report for reliability checks and dataset performance metrics.
 
@@ -101,6 +116,7 @@ class ValidationReport:
 
     reliability: SuiteReport
     evaluation: EvaluationReport
+    metric_gates: tuple[MetricGateResult, ...] = ()
     created_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
@@ -111,12 +127,31 @@ class ValidationReport:
         """Whether every selected reliability check passed."""
         return self.reliability.passed
 
+    @property
+    def performance_passed(self) -> bool | None:
+        """Whether configured performance gates passed, or None if none were set."""
+        if not self.metric_gates:
+            return None
+        return all(result.passed for result in self.metric_gates)
+
+    @property
+    def release_passed(self) -> bool | None:
+        """Release status when performance gates are configured; otherwise None."""
+        performance_passed = self.performance_passed
+        if performance_passed is None:
+            return None
+        return self.reliability_passed and performance_passed
+
     def to_dict(self) -> dict[str, Any]:
         """Return the combined report as a JSON-compatible dictionary."""
         return {
             "schema_version": "1.0",
             "created_at": self.created_at,
             "reliability_passed": self.reliability_passed,
+            "performance_gate_configured": bool(self.metric_gates),
+            "performance_passed": self.performance_passed,
+            "release_passed": self.release_passed,
+            "metric_gates": [result.to_dict() for result in self.metric_gates],
             "metadata": self.metadata,
             "reliability": self.reliability.to_dict(),
             "evaluation": self.evaluation.to_dict(),

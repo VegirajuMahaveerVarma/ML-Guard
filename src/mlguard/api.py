@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+import math
+from numbers import Real
 from typing import Any
 
 from mlguard.adapters.base import ModelAdapter
@@ -14,13 +16,78 @@ from mlguard.checks import (
     prediction_stability,
 )
 from mlguard.evaluation import Average, Task, evaluate_predictions
-from mlguard.exceptions import ModelExecutionError
+from mlguard.exceptions import InputValidationError, ModelExecutionError
 from mlguard.results import (
     EvaluationReport,
+    MetricGateResult,
     SuiteReport,
     TestResult,
     ValidationReport,
 )
+
+
+
+
+_CLASSIFICATION_METRICS = frozenset({"accuracy", "precision", "recall", "f1"})
+_REGRESSION_METRICS = frozenset({"mae", "mse", "rmse", "r2", "max_absolute_error"})
+
+
+def _normalize_metric_thresholds(
+    thresholds: Mapping[str, float] | None,
+    *,
+    task: Task,
+    option_name: str,
+) -> dict[str, float]:
+    """Validate configured metric thresholds before running the model."""
+    if task not in {"classification", "regression"}:
+        raise InputValidationError("task must be 'classification' or 'regression'.")
+    if thresholds is None:
+        return {}
+    if not isinstance(thresholds, Mapping):
+        raise InputValidationError(f"{option_name} must be a mapping of metric names to numbers.")
+
+    supported = _CLASSIFICATION_METRICS if task == "classification" else _REGRESSION_METRICS
+    normalized: dict[str, float] = {}
+    for metric, threshold in thresholds.items():
+        if not isinstance(metric, str) or metric not in supported:
+            choices = ", ".join(sorted(supported))
+            raise InputValidationError(
+                f"Unsupported metric {metric!r} in {option_name} for {task}; "
+                f"choose from: {choices}."
+            )
+        if isinstance(threshold, bool) or not isinstance(threshold, Real):
+            raise InputValidationError(f"Threshold for {metric!r} must be a finite number.")
+        value = float(threshold)
+        if not math.isfinite(value):
+            raise InputValidationError(f"Threshold for {metric!r} must be a finite number.")
+        normalized[metric] = value
+    return normalized
+
+
+def _metric_gate_results(
+    evaluation: EvaluationReport,
+    minimum_metrics: Mapping[str, float],
+    maximum_metrics: Mapping[str, float],
+) -> tuple[MetricGateResult, ...]:
+    """Compare the computed metrics with each explicitly configured limit."""
+    results: list[MetricGateResult] = []
+    for operator, thresholds in ((">=", minimum_metrics), ("<=", maximum_metrics)):
+        for metric, threshold in thresholds.items():
+            raw_actual = evaluation.metrics[metric]
+            actual = float(raw_actual) if isinstance(raw_actual, Real) else None
+            passed = actual is not None and (
+                actual >= threshold if operator == ">=" else actual <= threshold
+            )
+            results.append(
+                MetricGateResult(
+                    metric=metric,
+                    operator=operator,
+                    threshold=threshold,
+                    actual=actual,
+                    passed=bool(passed),
+                )
+            )
+    return tuple(results)
 
 
 class ModelGuard:
@@ -103,13 +170,21 @@ class ModelGuard:
         atol: float = 1e-8,
         rtol: float = 1e-5,
         max_changed_fraction: float = 0.0,
+        minimum_metrics: Mapping[str, float] | None = None,
+        maximum_metrics: Mapping[str, float] | None = None,
     ) -> ValidationReport:
         """Run reliability checks and dataset evaluation as one workflow.
 
-        The reliability section reports whether selected checks passed.
-        Performance metrics are descriptive; no application-specific score
-        thresholds are applied and no overall model-quality verdict is implied.
+        Metric gates are opt-in. If configured, release_passed is true only
+        when all selected reliability checks and all metric gates pass. Metrics
+        that cannot be computed (such as R-squared for one sample) fail a gate.
         """
+        minimum = _normalize_metric_thresholds(
+            minimum_metrics, task=task, option_name="minimum_metrics"
+        )
+        maximum = _normalize_metric_thresholds(
+            maximum_metrics, task=task, option_name="maximum_metrics"
+        )
         report_metadata = dict(metadata or {})
         reliability = self.run(
             X,
@@ -134,9 +209,11 @@ class ModelGuard:
             labels=labels,
             metadata=report_metadata,
         )
+        metric_gates = _metric_gate_results(evaluation, minimum, maximum)
         return ValidationReport(
             reliability=reliability,
             evaluation=evaluation,
+            metric_gates=metric_gates,
             metadata=report_metadata,
         )
 

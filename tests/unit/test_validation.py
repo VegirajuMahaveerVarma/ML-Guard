@@ -87,3 +87,80 @@ def test_validate_does_not_report_an_unqualified_overall_quality_pass():
     assert report.reliability_passed
     assert "passed" not in payload
     assert payload["evaluation"]["metrics"]["accuracy"] == pytest.approx(0.5)
+
+
+
+def test_metric_thresholds_control_release_gate_status():
+    X = [[0.1], [0.6], [0.9]]
+    y_true = [0, 0, 1]
+    report = ModelGuard(ThresholdModel()).validate(
+        X,
+        y_true,
+        task="classification",
+        checks=("prediction_stability",),
+        minimum_metrics={"accuracy": 0.8},
+        maximum_metrics={"f1": 0.9},
+    )
+
+    assert report.evaluation.metrics["accuracy"] == pytest.approx(2 / 3)
+    assert report.metric_gates[0].metric == "accuracy"
+    assert report.metric_gates[0].operator == ">="
+    assert report.metric_gates[0].passed is False
+    assert report.performance_passed is False
+    assert report.release_passed is False
+    payload = report.to_dict()
+    assert payload["performance_gate_configured"] is True
+    assert payload["release_passed"] is False
+
+
+def test_metric_thresholds_pass_and_can_be_used_for_regression():
+    class FirstFeatureRegressor:
+        def predict(self, X):
+            return np.asarray(X, dtype=float)[:, 0]
+
+    report = ModelGuard(FirstFeatureRegressor()).validate(
+        [[1.0], [2.0], [3.0]],
+        [1.0, 2.5, 2.0],
+        task="regression",
+        checks=("prediction_stability",),
+        maximum_metrics={"mae": 0.5, "rmse": 0.75},
+    )
+
+    assert report.performance_passed is True
+    assert report.release_passed is True
+    assert all(gate.passed for gate in report.metric_gates)
+
+
+def test_metric_thresholds_reject_unknown_metric_and_non_finite_value():
+    from mlguard.exceptions import InputValidationError
+
+    guard = ModelGuard(ThresholdModel())
+    with pytest.raises(InputValidationError, match="Unsupported metric"):
+        guard.validate(
+            [[0.1], [0.9]],
+            [0, 1],
+            task="classification",
+            checks=("prediction_stability",),
+            minimum_metrics={"loss": 0.1},
+        )
+    with pytest.raises(InputValidationError, match="finite number"):
+        guard.validate(
+            [[0.1], [0.9]],
+            [0, 1],
+            task="classification",
+            checks=("prediction_stability",),
+            minimum_metrics={"accuracy": float("nan")},
+        )
+
+
+def test_release_status_is_none_when_no_performance_gate_is_configured():
+    report = ModelGuard(ThresholdModel()).validate(
+        [[0.1], [0.9]],
+        [0, 1],
+        task="classification",
+        checks=("prediction_stability",),
+    )
+
+    assert report.performance_passed is None
+    assert report.release_passed is None
+    assert report.to_dict()["performance_gate_configured"] is False

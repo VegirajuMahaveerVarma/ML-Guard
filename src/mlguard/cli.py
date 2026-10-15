@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -13,7 +14,7 @@ import numpy as np
 
 from mlguard import __version__
 from mlguard.api import ModelGuard
-from mlguard.results import SuiteReport
+from mlguard.results import SuiteReport, ValidationReport
 
 CHECK_DESCRIPTIONS = {
     "prediction_stability": "Check repeat-prediction determinism.",
@@ -74,6 +75,52 @@ def _load_numeric_csv(path: Path, *, skip_header: bool) -> np.ndarray:
             "features; MLGuard injects test perturbations into a copy when needed."
         )
     return values
+
+
+
+
+def _load_numeric_targets(path: Path, *, skip_header: bool) -> np.ndarray:
+    """Load one numeric target value per row from a local CSV file."""
+    try:
+        values = np.loadtxt(
+            path,
+            delimiter=",",
+            dtype=float,
+            skiprows=1 if skip_header else 0,
+            ndmin=1,
+        )
+    except (OSError, ValueError) as exc:
+        raise ValueError(
+            f"Could not read '{path}' as a one-column numeric target CSV: {exc}"
+        ) from exc
+
+    if values.ndim != 1 or values.size == 0:
+        raise ValueError(f"'{path}' must contain exactly one target column and at least one row.")
+    if not np.isfinite(values).all():
+        raise ValueError(f"'{path}' contains missing or non-finite target values.")
+    return values
+
+
+def _parse_metric_thresholds(values: list[str], *, option_name: str) -> dict[str, float]:
+    """Parse repeated CLI values in metric=value form."""
+    thresholds: dict[str, float] = {}
+    for item in values:
+        metric, separator, raw_value = item.partition("=")
+        metric = metric.strip()
+        if not separator or not metric or not raw_value.strip():
+            raise ValueError(f"{option_name} values must use metric=value syntax.")
+        if metric in thresholds:
+            raise ValueError(f"Metric {metric!r} was provided more than once in {option_name}.")
+        try:
+            threshold = float(raw_value)
+        except ValueError as exc:
+            raise ValueError(
+                f"Threshold for {metric!r} in {option_name} must be numeric."
+            ) from exc
+        if not math.isfinite(threshold):
+            raise ValueError(f"Threshold for {metric!r} in {option_name} must be finite.")
+        thresholds[metric] = threshold
+    return thresholds
 
 
 def _parse_checks(value: str) -> tuple[str, ...]:
@@ -159,6 +206,37 @@ def _build_parser() -> argparse.ArgumentParser:
     check_parser.add_argument("--shift-threshold", type=float, default=0.25)
     check_parser.add_argument("--missing-fraction", type=float, default=0.05)
     check_parser.add_argument(
+        "--targets",
+        type=Path,
+        metavar="CSV",
+        help="One-column numeric ground-truth CSV; enables combined validation with --task.",
+    )
+    check_parser.add_argument(
+        "--task",
+        choices=("classification", "regression"),
+        help="Evaluation task; must be supplied together with --targets.",
+    )
+    check_parser.add_argument(
+        "--average",
+        choices=("macro", "weighted", "micro"),
+        default="macro",
+        help="Classification averaging mode for combined validation.",
+    )
+    check_parser.add_argument(
+        "--minimum-metric",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="Minimum acceptable metric; repeat for multiple gates, e.g. accuracy=0.9.",
+    )
+    check_parser.add_argument(
+        "--maximum-metric",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="Maximum acceptable metric; repeat for multiple gates, e.g. rmse=1.2.",
+    )
+    check_parser.add_argument(
         "--comparison-mode",
         choices=("auto", "classification", "regression"),
         default="auto",
@@ -187,6 +265,18 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _run_checks(args: argparse.Namespace) -> int:
     checks = _parse_checks(args.checks)
+    has_thresholds = bool(args.minimum_metric or args.maximum_metric)
+    if (args.targets is None) != (args.task is None):
+        raise ValueError("--targets and --task must be provided together.")
+    if has_thresholds and args.targets is None:
+        raise ValueError("Metric thresholds require both --targets and --task.")
+
+    minimum_metrics = _parse_metric_thresholds(
+        args.minimum_metric, option_name="--minimum-metric"
+    )
+    maximum_metrics = _parse_metric_thresholds(
+        args.maximum_metric, option_name="--maximum-metric"
+    )
     for search_path in reversed(args.model_path):
         path = str(Path(search_path).expanduser().resolve())
         if path not in sys.path:
@@ -222,30 +312,44 @@ def _run_checks(args: argparse.Namespace) -> int:
     if not isinstance(metadata, dict):
         raise ValueError("--metadata-json must decode to a JSON object.")
 
-    report: SuiteReport = guard.run(
-        X,
-        checks=checks,
-        noise_scale=args.noise_scale,
-        random_state=args.random_state,
-        metadata=metadata,
-        reference_X=reference_X,
-        shift_threshold=args.shift_threshold,
-        missing_fraction=args.missing_fraction,
-        baseline_model=baseline_model,
-        comparison_mode=args.comparison_mode,
-        atol=args.atol,
-        rtol=args.rtol,
-        max_changed_fraction=args.max_changed_fraction,
-    )
+    common_options = {
+        "checks": checks,
+        "noise_scale": args.noise_scale,
+        "random_state": args.random_state,
+        "metadata": metadata,
+        "reference_X": reference_X,
+        "shift_threshold": args.shift_threshold,
+        "missing_fraction": args.missing_fraction,
+        "baseline_model": baseline_model,
+        "comparison_mode": args.comparison_mode,
+        "atol": args.atol,
+        "rtol": args.rtol,
+        "max_changed_fraction": args.max_changed_fraction,
+    }
+    if args.targets is not None:
+        y_true = _load_numeric_targets(args.targets, skip_header=args.skip_header)
+        report: SuiteReport | ValidationReport = guard.validate(
+            X,
+            y_true,
+            task=args.task,
+            average=args.average,
+            minimum_metrics=minimum_metrics,
+            maximum_metrics=maximum_metrics,
+            **common_options,
+        )
+        failed = not report.reliability_passed or report.release_passed is False
+    else:
+        report = guard.run(X, **common_options)
+        failed = not report.passed
+
     rendered = json.dumps(report.to_dict(), indent=2, ensure_ascii=False)
     if args.output is not None:
         args.output.write_text(rendered + "\n", encoding="utf-8")
     print(rendered)
 
-    if not report.passed and not args.allow_failures:
+    if failed and not args.allow_failures:
         return 1
     return 0
-
 
 def main(argv: list[str] | None = None) -> int:
     """Run the MLGuard CLI and return a process exit code."""

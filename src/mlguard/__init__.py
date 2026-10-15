@@ -5,6 +5,7 @@ from mlguard.api import ModelGuard
 from mlguard.results import (
     EvaluationReport,
     Finding,
+    MetricGateResult,
     SuiteReport,
     TestResult,
     ValidationReport,
@@ -13,6 +14,7 @@ from mlguard.results import (
 __all__ = [
     "EvaluationReport",
     "Finding",
+    "MetricGateResult",
     "ModelGuard",
     "SklearnAdapter",
     "SuiteReport",

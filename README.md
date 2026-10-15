@@ -210,6 +210,35 @@ The checks and their options match ModelGuard.run. For example,
 distribution_shift requires reference_X, and model_comparison requires
 baseline_model.
 
+## Metric thresholds and release gates
+
+Set optional metric limits in `ModelGuard.validate` to turn evaluation scores
+into explicit release criteria. Minimum limits use `>=` (for example accuracy
+or F1); maximum limits use `<=` (for example MAE or RMSE).
+
+```python
+report = ModelGuard(model).validate(
+    X_test,
+    y_test,
+    task="classification",
+    minimum_metrics={"accuracy": 0.90, "f1": 0.85},
+    maximum_metrics={"recall": 0.95},
+)
+
+print(report.performance_passed)  # None when no metric gates were configured
+print(report.release_passed)      # True/False when metric gates are configured
+print(report.to_dict()["metric_gates"])
+```
+
+Only top-level numeric metrics for the selected task can be thresholded:
+classification supports accuracy, precision, recall, and F1; regression supports
+MAE, MSE, RMSE, R-squared, and maximum absolute error. Each configured threshold
+appears in the report with the observed value and pass/fail result. If a metric
+cannot be computed (for example, R-squared with fewer than two samples), its
+gate fails rather than silently passing. Without any configured metric limits,
+`performance_passed` and `release_passed` are `null`; the report does not
+imply that an unconfigured performance gate passed.
+
 ## Command-line interface
 
 Install MLGuard in the environment used for your model code:
@@ -231,6 +260,9 @@ For example, if `my_models.py` provides a `load_model()` function and
 
 ```bash
 mlguard check --model my_models:load_model --model-path . --input features.csv --checks prediction_stability,noise_robustness --output report.json
+
+# Combined validation: numeric target CSV plus explicit release thresholds
+mlguard check --model my_models:load_model --model-path . --input features.csv --targets targets.csv --task classification --checks prediction_stability,noise_robustness --minimum-metric accuracy=0.90 --minimum-metric f1=0.85 --output validation-report.json
 ```
 
 To compare feature distributions, include `--reference-input reference.csv`
@@ -240,8 +272,12 @@ existing model, use `--baseline-model package:load_baseline` with
 `SklearnAdapter` and pass it as `baseline_model` to `ModelGuard.from_sklearn(candidate).run(...)`. Use `--skip-header` for CSV files whose first row is a
 header. The report is printed as JSON and can also be written with `--output`.
 
-The CLI exits with code 1 when checks fail, code 2 for setup or input errors,
-and code 0 when all checks pass. Add `--allow-failures` to make failed checks
+The CLI accepts `--targets targets.csv --task classification|regression` to
+run combined validation. The target CSV must contain one numeric column; use
+`--minimum-metric NAME=VALUE` and `--maximum-metric NAME=VALUE` (repeatable)
+to configure performance gates. The CLI exits with code 1 when selected
+reliability checks or configured metric gates fail, code 2 for setup or input
+errors, and code 0 when all configured checks pass. Add `--allow-failures` to make failed checks
 non-fatal in automation. Model references import and execute local Python code:
 only point MLGuard at trusted modules and model artifacts. Input CSV files must
 contain finite numeric feature values; missing-value testing introduces NaNs

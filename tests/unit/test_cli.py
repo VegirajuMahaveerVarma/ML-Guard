@@ -188,3 +188,79 @@ def test_cli_rejects_non_object_metadata(tmp_path, monkeypatch, capsys):
 
     assert exit_code == 2
     assert "--metadata-json must decode to a JSON object" in captured.err
+
+
+
+def test_cli_combined_validation_passes_configured_metric_gate(
+    tmp_path, monkeypatch, capsys
+):
+    class ThresholdModel:
+        def predict(self, X):
+            values = np.asarray(X, dtype=float)
+            return (values[:, 0] > 0.5).astype(int)
+
+    _install_model_module(monkeypatch, "mlguard_cli_validation_pass", factory=ThresholdModel)
+    input_file = tmp_path / "features.csv"
+    target_file = tmp_path / "targets.csv"
+    np.savetxt(input_file, [[0.1], [0.9]], delimiter=",")
+    np.savetxt(target_file, [0, 1], delimiter=",")
+
+    exit_code = main([
+        "check", "--model", "mlguard_cli_validation_pass:load_model",
+        "--input", str(input_file), "--targets", str(target_file),
+        "--task", "classification", "--checks", "prediction_stability",
+        "--minimum-metric", "accuracy=1.0",
+    ])
+    report = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert report["evaluation"]["metrics"]["accuracy"] == 1.0
+    assert report["metric_gates"][0]["passed"] is True
+    assert report["release_passed"] is True
+
+
+def test_cli_returns_failure_when_performance_gate_is_not_met(
+    tmp_path, monkeypatch, capsys
+):
+    class ThresholdModel:
+        def predict(self, X):
+            values = np.asarray(X, dtype=float)
+            return (values[:, 0] > 0.5).astype(int)
+
+    _install_model_module(monkeypatch, "mlguard_cli_validation_fail", factory=ThresholdModel)
+    input_file = tmp_path / "features.csv"
+    target_file = tmp_path / "targets.csv"
+    np.savetxt(input_file, [[0.1], [0.6], [0.9]], delimiter=",")
+    np.savetxt(target_file, [0, 0, 1], delimiter=",")
+
+    exit_code = main([
+        "check", "--model", "mlguard_cli_validation_fail:load_model",
+        "--input", str(input_file), "--targets", str(target_file),
+        "--task", "classification", "--checks", "prediction_stability",
+        "--minimum-metric", "accuracy=0.8",
+    ])
+    report = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert report["reliability_passed"] is True
+    assert report["performance_passed"] is False
+    assert report["release_passed"] is False
+
+
+def test_cli_requires_targets_and_task_together(tmp_path, monkeypatch, capsys):
+    class ThresholdModel:
+        def predict(self, X):
+            return np.zeros(len(X), dtype=int)
+
+    _install_model_module(monkeypatch, "mlguard_cli_validation_pair", factory=ThresholdModel)
+    input_file = tmp_path / "features.csv"
+    np.savetxt(input_file, [[0.1], [0.9]], delimiter=",")
+
+    exit_code = main([
+        "check", "--model", "mlguard_cli_validation_pair:load_model",
+        "--input", str(input_file), "--task", "classification",
+    ])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "--targets and --task must be provided together" in captured.err
