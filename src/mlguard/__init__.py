@@ -2,7 +2,13 @@
 
 from mlguard.adapters.sklearn import SklearnAdapter
 from mlguard.api import ModelGuard
-from mlguard.results import EvaluationReport, Finding, SuiteReport, TestResult
+from mlguard.results import (
+    EvaluationReport,
+    Finding,
+    SuiteReport,
+    TestResult,
+    ValidationReport,
+)
 
 __all__ = [
     "EvaluationReport",
@@ -11,5 +17,6 @@ __all__ = [
     "SklearnAdapter",
     "SuiteReport",
     "TestResult",
+    "ValidationReport",
 ]
 __version__ = "0.1.0"
