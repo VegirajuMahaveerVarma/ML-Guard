@@ -47,8 +47,9 @@ current design relative to established tools.
 for four cases: two samples from the same distribution, injected mean shifts,
 injected variance changes, and a shape change with matching population mean and
 variance. By default it evaluates 128, 512, and 2048 samples per distribution,
-three mean-shift magnitudes, and three variance scales, with 100 trials per
-configuration:
+three mean-shift magnitudes, and three standard-deviation multipliers, with 100
+trials per configuration. Each standard-deviation multiplier is squared to get
+the generated distribution's variance multiplier:
 
 ```bash
 python examples/distribution_shift_experiment.py
@@ -57,7 +58,8 @@ python examples/distribution_shift_experiment.py
 The JSON report gives false-positive and detection rates for each combination
 of sample size and shift strength. Its smoke gate is evaluated at the canonical
 sample size (512 by default): it requires at least 95% detection for a mean shift
-of 0.75 standard deviations and a variance scale factor of 2.0, and no more than
+of 0.75 standard deviations and a standard-deviation multiplier of 2.0 (four
+times the variance), and no more than
 10% flags for same-distribution controls. These are deliberately simple checks to prevent gross
 regressions, not universal acceptance criteria or statistically precise
 performance estimates.
@@ -65,6 +67,6 @@ performance estimates.
 The shape-only case is included to make an important limitation visible: a
 screen based on means and variances can miss a distribution change that preserves
 both. The experiment accepts --trials, --sample-size, --additional-sample-sizes,
---mean-shifts, --variance-scales, and --seed for reproducible parameter sweeps.
+--mean-shifts, --variance-scales (standard-deviation multipliers), and --seed for reproducible parameter sweeps.
 It remains a synthetic, descriptive evaluation; further work should add more
 distribution families and public datasets before broad reliability claims.
