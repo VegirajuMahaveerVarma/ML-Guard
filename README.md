@@ -4,7 +4,7 @@
 
 MLGuard is an early-stage Python library for testing whether model predictions remain stable and robust under controlled input changes. Its core functionality runs locally; it does not upload models, datasets, or reports.
 
-> **Project status:** Alpha. The current implementation includes five checks: repeated-prediction stability, seeded Gaussian-noise robustness, feature-distribution shift screening, missing-value handling, and baseline-versus-candidate model comparison. APIs and reports may evolve.
+> **Project status:** Experimental alpha (pre-release). The current implementation includes five checks: repeated-prediction stability, seeded Gaussian-noise robustness, feature-distribution shift screening, missing-value handling, and baseline-versus-candidate model comparison. APIs and reports may evolve; validate regression replay and evaluation behavior for your model and data before using MLGuard as a release gate.
 
 ## Features
 

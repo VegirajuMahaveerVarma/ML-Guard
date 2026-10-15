@@ -160,6 +160,12 @@ def _replay_one(model: Any | None, case: RegressionCase) -> RegressionReplayResu
                     case.parameters.get("variance_ratio_threshold", 2.0)
                 ),
                 shape_alpha=float(case.parameters.get("shape_alpha", 0.05)),
+                _shape_correction_feature_count=int(
+                    case.parameters.get(
+                        "shape_correction_feature_count",
+                        np.asarray(candidate).shape[1],
+                    )
+                ),
             )
             reproduced = result.status == "failed"
             details["current_check_status"] = result.status
@@ -263,6 +269,46 @@ def _replay_one(model: Any | None, case: RegressionCase) -> RegressionReplayResu
             )
 
         if case.check_name == "model_comparison":
+            if case.scenario == "candidate_prediction_error":
+                try:
+                    _predict(model, test_input)
+                except Exception as exc:
+                    details["error_type"] = type(exc).__name__
+                    return RegressionReplayResult(
+                        case_id=case.case_id,
+                        check_name=case.check_name,
+                        status="reproduced",
+                        summary="The candidate model still raises an error on the saved batch.",
+                        details=details,
+                    )
+                return RegressionReplayResult(
+                    case_id=case.case_id,
+                    check_name=case.check_name,
+                    status="resolved",
+                    summary="The candidate model now returns predictions for the saved batch.",
+                    details=details,
+                )
+
+            if case.scenario == "candidate_prediction_shape_changed":
+                prediction = _predict(model, test_input)
+                expected_shape = case.expected_prediction
+                if not isinstance(expected_shape, dict) or "shape" not in expected_shape:
+                    raise ValueError("Shape-regression case is missing its expected shape.")
+                matches = list(prediction.shape) == list(expected_shape["shape"])
+                details["expected_prediction_shape"] = expected_shape["shape"]
+                details["current_prediction_shape"] = list(prediction.shape)
+                return RegressionReplayResult(
+                    case_id=case.case_id,
+                    check_name=case.check_name,
+                    status="resolved" if matches else "reproduced",
+                    summary=(
+                        "The candidate output shape now matches the stored baseline."
+                        if matches
+                        else "The candidate output shape still differs from the stored baseline."
+                    ),
+                    details=details,
+                )
+
             if case.expected_prediction is None:
                 raise ValueError(
                     "Model-comparison case is missing its expected baseline prediction."

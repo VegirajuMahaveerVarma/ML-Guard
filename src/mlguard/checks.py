@@ -108,6 +108,45 @@ def _sample_regression_case(
         return None
 
 
+def _dataset_regression_case(
+    check_name: str,
+    scenario: str,
+    input_source: Any,
+    *,
+    expected_prediction: Any | None = None,
+    observed_prediction: Any | None = None,
+    parameters: dict[str, Any] | None = None,
+    finding_code: str | None = None,
+) -> RegressionCase | None:
+    """Capture a dataset-level case for failures that depend on batch behavior."""
+    try:
+        columns = getattr(input_source, "columns", None)
+        if columns is not None:
+            to_numpy = getattr(input_source, "to_numpy", None)
+            values = to_numpy().tolist() if callable(to_numpy) else np.asarray(input_source).tolist()
+            input_format = "dataframe"
+            column_names = tuple(columns)
+        else:
+            values = np.asarray(input_source).tolist()
+            input_format = "array"
+            column_names = ()
+        return RegressionCase.create(
+            check_name=check_name,
+            scenario=scenario,
+            input=values,
+            input_layout="dataset",
+            input_format=input_format,
+            columns=column_names,
+            expected_prediction=expected_prediction,
+            observed_prediction=observed_prediction,
+            parameters=dict(parameters or {}),
+            finding_code=finding_code,
+        )
+    except (TypeError, ValueError):
+        # Large/custom or non-JSON-compatible inputs must not break a check.
+        return None
+
+
 def _preserve_input_container(original_input: Any, values: np.ndarray) -> Any:
     """Keep DataFrame column names and index when perturbing numeric features."""
     columns = getattr(original_input, "columns", None)
@@ -269,6 +308,7 @@ def distribution_shift(
     threshold: float = 0.25,
     variance_ratio_threshold: float = 2.0,
     shape_alpha: float = 0.05,
+    _shape_correction_feature_count: int | None = None,
 ) -> TestResult:
     """Screen numeric feature distributions for mean, variance, and shape changes.
 
@@ -359,9 +399,21 @@ def distribution_shift(
             variance_ratios[index] = ratio
 
     feature_count = int(reference.shape[1])
+    shape_correction_feature_count = feature_count
+    if _shape_correction_feature_count is not None:
+        if (
+            isinstance(_shape_correction_feature_count, bool)
+            or not isinstance(_shape_correction_feature_count, (int, np.integer))
+            or _shape_correction_feature_count < feature_count
+        ):
+            raise InputValidationError(
+                "_shape_correction_feature_count must be an integer at least as large "
+                "as the number of supplied features."
+            )
+        shape_correction_feature_count = int(_shape_correction_feature_count)
     reference_count = int(reference.shape[0])
     candidate_count = int(candidate.shape[0])
-    per_feature_alpha = shape_alpha / feature_count
+    per_feature_alpha = shape_alpha / shape_correction_feature_count
     shape_distance_threshold = float(
         np.sqrt(
             0.5
@@ -438,6 +490,7 @@ def distribution_shift(
                 "threshold": float(threshold),
                 "variance_ratio_threshold": float(variance_ratio_threshold),
                 "shape_alpha": float(shape_alpha),
+                "shape_correction_feature_count": shape_correction_feature_count,
                 "feature_index": int(index),
             },
             observed_prediction={
@@ -473,6 +526,7 @@ def distribution_shift(
             "shape_shifted_feature_count": shape_shift_count,
             "variance_check_available": variance_check_available,
             "feature_count": feature_count,
+            "shape_correction_feature_count": shape_correction_feature_count,
             "max_standardized_mean_difference": max_standardized,
             "standardized_mean_differences": [
                 float(value) if np.isfinite(value) else None for value in standardized
@@ -719,22 +773,61 @@ def model_comparison(
 
     try:
         baseline = _predict(baseline_model, X)
-        candidate = _predict(candidate_model, X)
     except Exception as exc:
         error_type = type(exc).__name__
         return TestResult(
             name="model_comparison",
             status="error",
-            summary="Could not compare models because a prediction call failed.",
-            metrics={"error_type": error_type},
+            summary="Could not compare models because the baseline prediction call failed.",
+            metrics={"error_type": error_type, "failed_model": "baseline"},
             findings=(
                 Finding(
                     code="MODEL_COMPARISON_PREDICTION_ERROR",
-                    message="The baseline or candidate model failed to produce predictions.",
+                    message="The baseline model failed to produce predictions.",
                     severity="error",
-                    details={"error_type": error_type},
+                    details={"error_type": error_type, "failed_model": "baseline"},
                 ),
             ),
+        )
+
+    try:
+        candidate = _predict(candidate_model, X)
+    except Exception as exc:
+        error_type = type(exc).__name__
+        case = _dataset_regression_case(
+            "model_comparison",
+            "candidate_prediction_error",
+            X,
+            expected_prediction={"shape": list(baseline.shape)},
+            observed_prediction={"error_type": error_type},
+            parameters={
+                "baseline_prediction_shape": list(baseline.shape),
+                "comparison_mode": comparison_mode,
+                "atol": float(atol),
+                "rtol": float(rtol),
+                "max_changed_fraction": float(max_changed_fraction),
+            },
+            finding_code="MODEL_COMPARISON_PREDICTION_ERROR",
+        )
+        failure_cases = (case,) if case is not None else ()
+        return TestResult(
+            name="model_comparison",
+            status="error",
+            summary="Could not compare models because the candidate prediction call failed.",
+            metrics={
+                "error_type": error_type,
+                "failed_model": "candidate",
+                "failure_cases_captured": len(failure_cases),
+            },
+            findings=(
+                Finding(
+                    code="MODEL_COMPARISON_PREDICTION_ERROR",
+                    message="The candidate model failed to produce predictions.",
+                    severity="error",
+                    details={"error_type": error_type, "failed_model": "candidate"},
+                ),
+            ),
+            failure_cases=failure_cases,
         )
 
     expected_samples = _expected_sample_count(X)
@@ -746,11 +839,28 @@ def model_comparison(
             "baseline_sample_count": int(baseline.shape[0]),
             "candidate_sample_count": int(candidate.shape[0]),
         }
+        failure_cases: tuple[RegressionCase, ...] = ()
+        if baseline.shape[0] == expected_samples and candidate.shape[0] != expected_samples:
+            case = _dataset_regression_case(
+                "model_comparison",
+                "candidate_prediction_shape_changed",
+                X,
+                expected_prediction={"shape": list(baseline.shape)},
+                observed_prediction={"shape": list(candidate.shape)},
+                parameters={
+                    "comparison_mode": comparison_mode,
+                    "atol": float(atol),
+                    "rtol": float(rtol),
+                    "max_changed_fraction": float(max_changed_fraction),
+                },
+                finding_code="MODEL_PREDICTION_COUNT_MISMATCH",
+            )
+            failure_cases = (case,) if case is not None else ()
         return TestResult(
             name="model_comparison",
             status="error",
             summary="One or both models returned a prediction count that does not match the input.",
-            metrics=metrics,
+            metrics={**metrics, "failure_cases_captured": len(failure_cases)},
             findings=(
                 Finding(
                     code="MODEL_PREDICTION_COUNT_MISMATCH",
@@ -759,43 +869,48 @@ def model_comparison(
                     details=metrics,
                 ),
             ),
+            failure_cases=failure_cases,
         )
 
-    if baseline.shape[0] != candidate.shape[0]:
-        return TestResult(
-            name="model_comparison",
-            status="failed",
-            summary="Baseline and candidate models returned different sample counts.",
-            metrics={
-                "baseline_sample_count": int(baseline.shape[0]),
-                "candidate_sample_count": int(candidate.shape[0]),
+    if baseline.shape[0] != candidate.shape[0] or baseline.shape != candidate.shape:
+        failure_code = (
+            "PREDICTION_SAMPLE_COUNT_CHANGED"
+            if baseline.shape[0] != candidate.shape[0]
+            else "PREDICTION_SHAPE_CHANGED"
+        )
+        case = _dataset_regression_case(
+            "model_comparison",
+            "candidate_prediction_shape_changed",
+            X,
+            expected_prediction={"shape": list(baseline.shape)},
+            observed_prediction={"shape": list(candidate.shape)},
+            parameters={
+                "comparison_mode": comparison_mode,
+                "atol": float(atol),
+                "rtol": float(rtol),
+                "max_changed_fraction": float(max_changed_fraction),
+                "baseline_prediction_shape": list(baseline.shape),
             },
-            findings=(
-                Finding(
-                    code="PREDICTION_SAMPLE_COUNT_CHANGED",
-                    message="The models returned a different number of predictions.",
-                    severity="error",
-                    details={
-                        "baseline_sample_count": int(baseline.shape[0]),
-                        "candidate_sample_count": int(candidate.shape[0]),
-                    },
-                ),
-            ),
+            finding_code=failure_code,
         )
-
-    if baseline.shape != candidate.shape:
+        failure_cases = (case,) if case is not None else ()
         return TestResult(
             name="model_comparison",
             status="failed",
-            summary="Baseline and candidate prediction shapes differ.",
+            summary=(
+                "Baseline and candidate models returned different sample counts."
+                if baseline.shape[0] != candidate.shape[0]
+                else "Baseline and candidate prediction shapes differ."
+            ),
             metrics={
                 "baseline_prediction_shape": list(baseline.shape),
                 "candidate_prediction_shape": list(candidate.shape),
+                "failure_cases_captured": len(failure_cases),
             },
             findings=(
                 Finding(
-                    code="PREDICTION_SHAPE_CHANGED",
-                    message="The candidate model changed the shape of its predictions.",
+                    code=failure_code,
+                    message="The candidate model changed its prediction count or shape.",
                     severity="error",
                     details={
                         "baseline_prediction_shape": list(baseline.shape),
@@ -803,6 +918,7 @@ def model_comparison(
                     },
                 ),
             ),
+            failure_cases=failure_cases,
         )
 
     numeric_kinds = "iuf"
@@ -838,6 +954,28 @@ def model_comparison(
         if not baseline_finite.all() or not candidate_finite.all():
             invalid_baseline = int((~baseline_finite).sum())
             invalid_candidate = int((~candidate_finite).sum())
+            failure_cases: list[RegressionCase] = []
+            baseline_finite_rows = baseline_finite.reshape(baseline_finite.shape[0], -1).all(axis=1)
+            candidate_finite_rows = candidate_finite.reshape(candidate_finite.shape[0], -1).all(axis=1)
+            candidate_invalid_rows = np.flatnonzero(baseline_finite_rows & ~candidate_finite_rows)
+            for sample_index in candidate_invalid_rows[:MAX_FAILURE_CASES_PER_CHECK]:
+                case = _sample_regression_case(
+                    "model_comparison",
+                    "candidate_non_finite_prediction",
+                    X,
+                    int(sample_index),
+                    expected_prediction=baseline[sample_index],
+                    observed_prediction=candidate[sample_index],
+                    parameters={
+                        "comparison_mode": "regression",
+                        "atol": float(atol),
+                        "rtol": float(rtol),
+                        "max_changed_fraction": float(max_changed_fraction),
+                    },
+                    finding_code="NON_FINITE_MODEL_PREDICTIONS",
+                )
+                if case is not None:
+                    failure_cases.append(case)
             return TestResult(
                 name="model_comparison",
                 status="failed",
@@ -846,6 +984,8 @@ def model_comparison(
                     **metrics,
                     "invalid_baseline_prediction_count": invalid_baseline,
                     "invalid_candidate_prediction_count": invalid_candidate,
+                    "failure_cases_captured": len(failure_cases),
+                    "failure_cases_truncated": len(candidate_invalid_rows) > len(failure_cases),
                 },
                 findings=(
                     Finding(
@@ -861,6 +1001,7 @@ def model_comparison(
                         },
                     ),
                 ),
+                failure_cases=tuple(failure_cases),
             )
 
         close = np.isclose(

@@ -190,3 +190,102 @@ def test_replay_requires_a_model_for_prediction_cases(tmp_path, capsys):
 
     assert exit_code == 2
     assert "A model is required" in captured.err
+
+
+
+def test_distribution_shift_replay_preserves_original_feature_correction():
+    rng = np.random.default_rng(42)
+    reference = rng.normal(size=(100, 2))
+    candidate = reference.copy()
+    candidate[:, 0] += 1.5
+    original = ModelGuard(ConstantModel()).run(
+        candidate,
+        checks=("distribution_shift",),
+        reference_X=reference,
+    )
+    assert original.failure_cases
+    assert all(
+        case.parameters["shape_correction_feature_count"] == 2
+        for case in original.failure_cases
+    )
+
+    replay = replay_regression_cases(None, original.failure_cases)
+    original_threshold = original.results[0].metrics["shape_distance_threshold"]
+    replay_thresholds = [
+        item.details["current_metrics"]["shape_distance_threshold"]
+        for item in replay.results
+    ]
+    assert replay_thresholds
+    assert all(value == original_threshold for value in replay_thresholds)
+
+
+class RaisingModel:
+    def predict(self, X):
+        raise RuntimeError("intentional candidate failure")
+
+
+class WrongShapeModel:
+    def predict(self, X):
+        values = np.asarray(X, dtype=float)
+        return np.column_stack(((values[:, 0] > 0.5).astype(int), np.zeros(len(values))))
+
+
+class NumericModel:
+    def predict(self, X):
+        return np.asarray(X, dtype=float)[:, 0]
+
+
+class NonFiniteNumericModel:
+    def predict(self, X):
+        values = np.asarray(X, dtype=float)[:, 0].copy()
+        values[0] = np.nan
+        return values
+
+
+def test_candidate_prediction_error_is_captured_and_replayed():
+    X = np.array([[0.1], [0.9], [0.7]])
+    baseline = ThresholdModel()
+    failing = RaisingModel()
+    report = ModelGuard(failing).run(
+        X,
+        checks=("model_comparison",),
+        baseline_model=baseline,
+    )
+    assert report.results[0].status == "error"
+    assert report.failure_cases
+    assert report.failure_cases[0].scenario == "candidate_prediction_error"
+    assert replay_regression_cases(failing, report.failure_cases).reproduced_count == 1
+    assert replay_regression_cases(baseline, report.failure_cases).passed
+
+
+def test_candidate_shape_change_is_captured_and_replayed():
+    X = np.array([[0.1], [0.9], [0.7]])
+    baseline = ThresholdModel()
+    candidate = WrongShapeModel()
+    report = ModelGuard(candidate).run(
+        X,
+        checks=("model_comparison",),
+        baseline_model=baseline,
+    )
+    assert report.results[0].status == "failed"
+    assert report.failure_cases
+    assert report.failure_cases[0].scenario == "candidate_prediction_shape_changed"
+    assert replay_regression_cases(candidate, report.failure_cases).reproduced_count == 1
+    assert replay_regression_cases(baseline, report.failure_cases).passed
+
+
+def test_non_finite_candidate_predictions_are_captured_and_replayed():
+    X = np.array([[0.1], [0.9], [0.7]])
+    baseline = NumericModel()
+    candidate = NonFiniteNumericModel()
+    report = ModelGuard(candidate).run(
+        X,
+        checks=("model_comparison",),
+        baseline_model=baseline,
+        comparison_mode="regression",
+    )
+    assert report.results[0].status == "failed"
+    assert report.failure_cases
+    assert report.failure_cases[0].scenario == "candidate_non_finite_prediction"
+    assert replay_regression_cases(candidate, report.failure_cases).reproduced_count >= 1
+    assert replay_regression_cases(baseline, report.failure_cases).passed
