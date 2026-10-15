@@ -437,7 +437,10 @@ def model_comparison(
                 findings=(
                     Finding(
                         code="NON_FINITE_MODEL_PREDICTIONS",
-                        message="Regression comparison requires finite predictions from both models.",
+                        message=(
+                            "Regression comparison requires finite predictions from "
+                            "both models."
+                        ),
                         severity="error",
                         details={
                             "invalid_baseline_prediction_count": invalid_baseline,
