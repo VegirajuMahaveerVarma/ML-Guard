@@ -166,18 +166,19 @@ def distribution_shift(
     *,
     threshold: float = 0.25,
     variance_ratio_threshold: float = 2.0,
+    shape_alpha: float = 0.05,
 ) -> TestResult:
-    """Screen numeric feature distributions for mean and variance changes.
+    """Screen numeric feature distributions for mean, variance, and shape changes.
 
-    Mean changes are measured with standardized mean differences. When both
-    samples contain at least two rows, spread changes are also screened using
-    the ratio of the larger sample variance to the smaller. A variance ratio
-    greater than the configured threshold flags a spread change. If only one
-    variance is zero, the ratio is unbounded and the feature is flagged.
+    Mean changes are measured with standardized mean differences; spread changes
+    use sample-variance ratios. Shape changes are screened using the maximum
+    two-sample empirical-CDF distance. Its conservative DKW-style threshold
+    depends on both sample sizes and applies a Bonferroni correction across
+    features to bound the family-wise false-positive probability by shape_alpha.
 
-    This is descriptive screening, not a statistical hypothesis test. It does
-    not detect every possible distribution change (for example, some shape-only
-    changes with matching means and variances).
+    The shape screen is descriptive thresholding, not a returned p-value. It can
+    miss subtle shifts when samples are small and should be calibrated to the
+    application rather than treated as a universal production guarantee.
     """
     if not np.isfinite(threshold) or threshold < 0:
         raise InputValidationError("threshold must be a finite, non-negative number.")
@@ -185,6 +186,8 @@ def distribution_shift(
         raise InputValidationError(
             "variance_ratio_threshold must be a finite number greater than 1."
         )
+    if not np.isfinite(shape_alpha) or not 0 < shape_alpha < 1:
+        raise InputValidationError("shape_alpha must be a finite number strictly between 0 and 1.")
 
     reference = require_numeric(as_array(reference_X, name="reference_X"), name="reference_X")
     candidate = require_numeric(as_array(candidate_X, name="candidate_X"), name="candidate_X")
@@ -194,6 +197,8 @@ def distribution_shift(
         raise InputValidationError(
             "reference_X and candidate_X must have the same number of features."
         )
+    if reference.shape[1] == 0:
+        raise InputValidationError("reference_X and candidate_X must contain at least one feature.")
 
     ref_mean = reference.mean(axis=0)
     cand_mean = candidate.mean(axis=0)
@@ -251,7 +256,34 @@ def distribution_shift(
                     variance_shifted[index] = True
             variance_ratios[index] = ratio
 
-    shifted_indices = np.flatnonzero(mean_shifted | variance_shifted)
+    feature_count = int(reference.shape[1])
+    reference_count = int(reference.shape[0])
+    candidate_count = int(candidate.shape[0])
+    per_feature_alpha = shape_alpha / feature_count
+    shape_distance_threshold = float(
+        np.sqrt(
+            0.5
+            * np.log(2.0 / per_feature_alpha)
+            * (1.0 / reference_count + 1.0 / candidate_count)
+        )
+    )
+    shape_distances = np.zeros(feature_count, dtype=float)
+    for index in range(feature_count):
+        ref_values = np.sort(reference[:, index])
+        cand_values = np.sort(candidate[:, index])
+        pooled_values = np.unique(np.concatenate((ref_values, cand_values)))
+        ref_left = np.searchsorted(ref_values, pooled_values, side="left") / reference_count
+        cand_left = np.searchsorted(cand_values, pooled_values, side="left") / candidate_count
+        ref_right = np.searchsorted(ref_values, pooled_values, side="right") / reference_count
+        cand_right = np.searchsorted(cand_values, pooled_values, side="right") / candidate_count
+        left_distance = np.abs(ref_left - cand_left)
+        right_distance = np.abs(ref_right - cand_right)
+        shape_distances[index] = float(
+            max(left_distance.max(initial=0.0), right_distance.max(initial=0.0))
+        )
+    shape_shifted = shape_distances > shape_distance_threshold
+
+    shifted_indices = np.flatnonzero(mean_shifted | variance_shifted | shape_shifted)
     findings = tuple(
         Finding(
             code="FEATURE_DISTRIBUTION_SHIFT",
@@ -263,6 +295,7 @@ def distribution_shift(
                     for shift_type, is_shifted in (
                         ("mean", bool(mean_shifted[index])),
                         ("variance", bool(variance_shifted[index])),
+                        ("shape", bool(shape_shifted[index])),
                     )
                     if is_shifted
                 ],
@@ -270,6 +303,9 @@ def distribution_shift(
                     float(standardized[index]) if np.isfinite(standardized[index]) else None
                 ),
                 "variance_ratio": variance_ratios[index],
+                "empirical_cdf_distance": float(shape_distances[index]),
+                "shape_distance_threshold": shape_distance_threshold,
+                "shape_alpha": float(shape_alpha),
                 "threshold": float(threshold),
                 "variance_ratio_threshold": float(variance_ratio_threshold),
             },
@@ -284,27 +320,32 @@ def distribution_shift(
     )
     variance_shift_count = int(variance_shifted.sum())
     mean_shift_count = int(mean_shifted.sum())
+    shape_shift_count = int(shape_shifted.sum())
     shifted_count = int(shifted_indices.size)
     return TestResult(
         name="distribution_shift",
         status="failed" if shifted_count else "passed",
         summary=(
             f"{shifted_count} feature(s) flagged: {mean_shift_count} mean shift(s), "
-            f"{variance_shift_count} variance shift(s)."
+            f"{variance_shift_count} variance shift(s), {shape_shift_count} shape shift(s)."
         ),
         metrics={
             "threshold": float(threshold),
             "variance_ratio_threshold": float(variance_ratio_threshold),
+            "shape_alpha": float(shape_alpha),
+            "shape_distance_threshold": shape_distance_threshold,
             "shifted_feature_count": shifted_count,
             "mean_shifted_feature_count": mean_shift_count,
             "variance_shifted_feature_count": variance_shift_count,
+            "shape_shifted_feature_count": shape_shift_count,
             "variance_check_available": variance_check_available,
-            "feature_count": int(reference.shape[1]),
+            "feature_count": feature_count,
             "max_standardized_mean_difference": max_standardized,
             "standardized_mean_differences": [
                 float(value) if np.isfinite(value) else None for value in standardized
             ],
             "variance_ratios": variance_ratios,
+            "empirical_cdf_distances": [float(value) for value in shape_distances],
         },
         findings=findings,
     )
