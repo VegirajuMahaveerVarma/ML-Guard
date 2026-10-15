@@ -286,3 +286,211 @@ def missing_value_robustness(
         ),
         metrics=metrics,
     )
+
+
+
+def model_comparison(
+    baseline_model: ModelAdapter,
+    candidate_model: ModelAdapter,
+    X: Any,
+    *,
+    comparison_mode: str = "auto",
+    atol: float = 1e-8,
+    rtol: float = 1e-5,
+    max_changed_fraction: float = 0.0,
+) -> TestResult:
+    """Compare a candidate model's predictions against a baseline model.
+
+    Classification predictions are compared exactly. Regression predictions
+    are compared using NumPy's absolute and relative tolerances. In auto mode,
+    floating-point numeric predictions use regression comparison; other
+    prediction types use exact comparison. Set comparison_mode explicitly
+    when a classifier emits floating-point labels.
+    """
+    if comparison_mode not in {"auto", "classification", "regression"}:
+        raise InputValidationError(
+            "comparison_mode must be 'auto', 'classification', or 'regression'."
+        )
+    if not np.isfinite(atol) or atol < 0:
+        raise InputValidationError("atol must be a finite, non-negative number.")
+    if not np.isfinite(rtol) or rtol < 0:
+        raise InputValidationError("rtol must be a finite, non-negative number.")
+    if (
+        not np.isfinite(max_changed_fraction)
+        or max_changed_fraction < 0
+        or max_changed_fraction > 1
+    ):
+        raise InputValidationError(
+            "max_changed_fraction must be between 0 and 1, inclusive."
+        )
+    if not callable(getattr(baseline_model, "predict", None)):
+        raise InputValidationError("baseline_model must expose a callable predict(X) method.")
+    if not callable(getattr(candidate_model, "predict", None)):
+        raise InputValidationError("candidate_model must expose a callable predict(X) method.")
+
+    try:
+        baseline = _predict(baseline_model, X)
+        candidate = _predict(candidate_model, X)
+    except Exception as exc:
+        error_type = type(exc).__name__
+        return TestResult(
+            name="model_comparison",
+            status="error",
+            summary="Could not compare models because a prediction call failed.",
+            metrics={"error_type": error_type},
+            findings=(
+                Finding(
+                    code="MODEL_COMPARISON_PREDICTION_ERROR",
+                    message="The baseline or candidate model failed to produce predictions.",
+                    severity="error",
+                    details={"error_type": error_type},
+                ),
+            ),
+        )
+
+    if baseline.shape[0] != candidate.shape[0]:
+        return TestResult(
+            name="model_comparison",
+            status="failed",
+            summary="Baseline and candidate models returned different sample counts.",
+            metrics={
+                "baseline_sample_count": int(baseline.shape[0]),
+                "candidate_sample_count": int(candidate.shape[0]),
+            },
+            findings=(
+                Finding(
+                    code="PREDICTION_SAMPLE_COUNT_CHANGED",
+                    message="The models returned a different number of predictions.",
+                    severity="error",
+                    details={
+                        "baseline_sample_count": int(baseline.shape[0]),
+                        "candidate_sample_count": int(candidate.shape[0]),
+                    },
+                ),
+            ),
+        )
+
+    if baseline.shape != candidate.shape:
+        return TestResult(
+            name="model_comparison",
+            status="failed",
+            summary="Baseline and candidate prediction shapes differ.",
+            metrics={
+                "baseline_prediction_shape": list(baseline.shape),
+                "candidate_prediction_shape": list(candidate.shape),
+            },
+            findings=(
+                Finding(
+                    code="PREDICTION_SHAPE_CHANGED",
+                    message="The candidate model changed the shape of its predictions.",
+                    severity="error",
+                    details={
+                        "baseline_prediction_shape": list(baseline.shape),
+                        "candidate_prediction_shape": list(candidate.shape),
+                    },
+                ),
+            ),
+        )
+
+    numeric_kinds = "iuf"
+    if comparison_mode == "auto":
+        use_regression_comparison = (
+            baseline.dtype.kind in numeric_kinds
+            and candidate.dtype.kind in numeric_kinds
+            and (baseline.dtype.kind == "f" or candidate.dtype.kind == "f")
+        )
+        effective_mode = "regression" if use_regression_comparison else "classification"
+    else:
+        effective_mode = comparison_mode
+
+    metrics: dict[str, Any] = {
+        "comparison_mode": effective_mode,
+        "max_changed_fraction": float(max_changed_fraction),
+        "atol": float(atol),
+        "rtol": float(rtol),
+        "compared_samples": int(baseline.shape[0]),
+    }
+
+    if effective_mode == "regression":
+        try:
+            baseline_numeric = baseline.astype(float)
+            candidate_numeric = candidate.astype(float)
+        except (TypeError, ValueError) as exc:
+            raise InputValidationError(
+                "Regression comparison requires numeric model predictions."
+            ) from exc
+
+        baseline_finite = np.isfinite(baseline_numeric)
+        candidate_finite = np.isfinite(candidate_numeric)
+        if not baseline_finite.all() or not candidate_finite.all():
+            invalid_baseline = int((~baseline_finite).sum())
+            invalid_candidate = int((~candidate_finite).sum())
+            return TestResult(
+                name="model_comparison",
+                status="failed",
+                summary="One or both models returned non-finite numeric predictions.",
+                metrics={
+                    **metrics,
+                    "invalid_baseline_prediction_count": invalid_baseline,
+                    "invalid_candidate_prediction_count": invalid_candidate,
+                },
+                findings=(
+                    Finding(
+                        code="NON_FINITE_MODEL_PREDICTIONS",
+                        message="Regression comparison requires finite predictions from both models.",
+                        severity="error",
+                        details={
+                            "invalid_baseline_prediction_count": invalid_baseline,
+                            "invalid_candidate_prediction_count": invalid_candidate,
+                        },
+                    ),
+                ),
+            )
+
+        close = np.isclose(
+            baseline_numeric,
+            candidate_numeric,
+            atol=atol,
+            rtol=rtol,
+            equal_nan=False,
+        )
+        changed_rows = ~close.reshape(close.shape[0], -1).all(axis=1)
+        absolute_difference = np.abs(candidate_numeric - baseline_numeric)
+        metrics["mean_absolute_difference"] = float(absolute_difference.mean())
+        metrics["max_absolute_difference"] = float(absolute_difference.max(initial=0.0))
+    else:
+        same = _equal_predictions(baseline, candidate)
+        changed_rows = ~same
+
+    changed_samples = int(changed_rows.sum())
+    changed_fraction = float(changed_samples / baseline.shape[0])
+    passed = changed_fraction <= max_changed_fraction
+    metrics.update({
+        "changed_samples": changed_samples,
+        "changed_fraction": changed_fraction,
+    })
+    findings = ()
+    if changed_samples:
+        findings = (
+            Finding(
+                code="MODEL_PREDICTIONS_CHANGED",
+                message="Some candidate predictions differ from the baseline model.",
+                severity="warning",
+                details={
+                    "changed_samples": changed_samples,
+                    "changed_fraction": changed_fraction,
+                    "max_changed_fraction": float(max_changed_fraction),
+                },
+            ),
+        )
+
+    return TestResult(
+        name="model_comparison",
+        status="passed" if passed else "failed",
+        summary=(
+            f"{changed_samples} of {baseline.shape[0]} predictions differed "
+            f"({changed_fraction:.3%}); allowed fraction is {max_changed_fraction:.3%}."
+        ),
+        metrics=metrics,
+        findings=findings,
+    )
