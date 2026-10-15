@@ -2,6 +2,11 @@
 
 from mlguard.adapters.sklearn import SklearnAdapter
 from mlguard.api import ModelGuard
+from mlguard.regression import (
+    load_regression_cases,
+    replay_regression_cases,
+    save_regression_cases,
+)
 from mlguard.results import (
     EvaluationReport,
     Finding,
@@ -12,11 +17,6 @@ from mlguard.results import (
     SuiteReport,
     TestResult,
     ValidationReport,
-)
-from mlguard.regression import (
-    load_regression_cases,
-    replay_regression_cases,
-    save_regression_cases,
 )
 
 __all__ = [

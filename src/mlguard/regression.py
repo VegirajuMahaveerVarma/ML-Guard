@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import numpy as np
 
@@ -252,16 +253,22 @@ def _replay_one(model: Any | None, case: RegressionCase) -> RegressionReplayResu
                 check_name=case.check_name,
                 status="reproduced" if reproduced else "resolved",
                 summary=(
-                    "The model still produces invalid predictions for the saved missing-value input."
+                    (
+                        "The model still produces invalid predictions for the saved missing-value input."
+                    )
                     if reproduced
-                    else "The model now returns valid predictions for the saved missing-value input."
+                    else (
+                        "The model now returns valid predictions for the saved missing-value input."
+                    )
                 ),
                 details=details,
             )
 
         if case.check_name == "model_comparison":
             if case.expected_prediction is None:
-                raise ValueError("Model-comparison case is missing its expected baseline prediction.")
+                raise ValueError(
+                    "Model-comparison case is missing its expected baseline prediction."
+                )
             prediction = _predict(model, test_input)
             if prediction.shape[0] != 1:
                 raise ValueError("The model must return exactly one prediction for a saved sample.")
