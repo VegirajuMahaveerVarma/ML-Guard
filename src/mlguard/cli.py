@@ -206,6 +206,12 @@ def _build_parser() -> argparse.ArgumentParser:
     check_parser.add_argument("--stability-repeats", type=int, default=3)
     check_parser.add_argument("--shift-threshold", type=float, default=0.25)
     check_parser.add_argument("--variance-ratio-threshold", type=float, default=2.0)
+    check_parser.add_argument(
+        "--shape-alpha",
+        type=float,
+        default=0.05,
+        help="Family-wise false-positive budget for empirical-CDF feature-shape screening.",
+    )
     check_parser.add_argument("--missing-fraction", type=float, default=0.05)
     check_parser.add_argument(
         "--targets",
@@ -323,6 +329,7 @@ def _run_checks(args: argparse.Namespace) -> int:
         "reference_X": reference_X,
         "shift_threshold": args.shift_threshold,
         "variance_ratio_threshold": args.variance_ratio_threshold,
+        "shape_alpha": args.shape_alpha,
         "missing_fraction": args.missing_fraction,
         "baseline_model": baseline_model,
         "comparison_mode": args.comparison_mode,
