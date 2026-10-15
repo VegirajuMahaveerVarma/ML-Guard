@@ -125,8 +125,16 @@ def distribution_shift(
 
     ref_mean = reference.mean(axis=0)
     cand_mean = candidate.mean(axis=0)
-    ref_var = reference.var(axis=0, ddof=1) if reference.shape[0] > 1 else np.zeros(reference.shape[1])
-    cand_var = candidate.var(axis=0, ddof=1) if candidate.shape[0] > 1 else np.zeros(candidate.shape[1])
+    ref_var = (
+        reference.var(axis=0, ddof=1)
+        if reference.shape[0] > 1
+        else np.zeros(reference.shape[1])
+    )
+    cand_var = (
+        candidate.var(axis=0, ddof=1)
+        if candidate.shape[0] > 1
+        else np.zeros(candidate.shape[1])
+    )
     pooled_scale = np.sqrt((ref_var + cand_var) / 2.0)
     differences = np.abs(cand_mean - ref_mean)
     standardized = np.divide(
@@ -152,7 +160,10 @@ def distribution_shift(
     return TestResult(
         name="distribution_shift",
         status="failed" if shifted else "passed",
-        summary=f"{int(shifted_indices.size)} feature(s) exceeded the shift threshold of {threshold:.3f}.",
+        summary=(
+            f"{int(shifted_indices.size)} feature(s) exceeded the shift "
+            f"threshold of {threshold:.3f}."
+        ),
         metrics={
             "threshold": float(threshold),
             "shifted_feature_count": int(shifted_indices.size),
