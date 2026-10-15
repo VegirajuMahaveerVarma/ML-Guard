@@ -1,0 +1,30 @@
+# Changelog
+
+Notable changes to MLGuard are recorded here.
+
+## [0.1.0] — 2026-10-15
+
+First public alpha scope:
+
+- Added five model reliability checks: prediction stability, Gaussian-noise
+  robustness, feature-distribution shift screening, missing-value robustness,
+  and baseline-versus-candidate prediction comparison.
+- Added classification metrics (accuracy, precision, recall, F1, confusion
+  matrix, and per-class metrics) and regression metrics (MAE, MSE, RMSE,
+  R-squared, and maximum absolute error).
+- Added combined validation reports and optional metric-based release gates.
+- Added a local CLI for executing reliability checks against numeric CSV data
+  and producing JSON reports.
+- Added optional scikit-learn estimator and Pipeline integration.
+- Added automated tests on Python 3.10–3.13.
+
+Alpha limitations:
+
+- Public APIs may change before a stable 1.0 release.
+- CLI features and targets are currently numeric CSV inputs; classification is
+  single-label, and regression supports a single numeric target.
+- Perturbation checks for noise and missing values require numeric features.
+- Distribution-shift screening is descriptive and is not a statistical
+  hypothesis test.
+- This release is distributed as GitHub assets. PyPI publication is deferred
+  until a distinct distribution name is confirmed.

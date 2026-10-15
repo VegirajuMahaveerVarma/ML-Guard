@@ -27,6 +27,12 @@ dependencies = ["numpy>=1.23"]
 [project.scripts]
 mlguard = "mlguard.cli:main"
 
+[project.urls]
+Homepage = "https://github.com/VegirajuMahaveerVarma/ML-Guard"
+Repository = "https://github.com/VegirajuMahaveerVarma/ML-Guard"
+Issues = "https://github.com/VegirajuMahaveerVarma/ML-Guard/issues"
+Changelog = "https://github.com/VegirajuMahaveerVarma/ML-Guard/blob/main/CHANGELOG.md"
+
 [project.optional-dependencies]
 sklearn = ["scikit-learn>=1.2"]
 dev = ["pytest>=8.0", "ruff>=0.5", "mypy>=1.10", "pandas>=1.5"]

@@ -21,6 +21,24 @@ MLGuard is an early-stage Python library for testing whether model predictions r
 - Local execution; no telemetry or network calls in the library.
 - Command-line interface for running checks against local numeric CSV files.
 
+## First public alpha release
+
+MLGuard's first release is distributed through GitHub Release assets. After
+the `v0.1.0` release is published, download the wheel from the release page
+and install it locally:
+
+```bash
+python -m pip install ./mlguard-0.1.0-py3-none-any.whl
+mlguard --version
+```
+
+The wheel filename above is the expected artifact name for version `0.1.0`.
+See [CHANGELOG.md](CHANGELOG.md) for the alpha's scope and
+[docs/RELEASING.md](docs/RELEASING.md) for the release process. The project is
+not currently being published to PyPI under the `mlguard` distribution name;
+that name conflicts with an unrelated package, so PyPI publishing is deferred
+until a distinct distribution name is chosen and confirmed.
+
 ## Install for development
 
 Python 3.10 or newer is required.
