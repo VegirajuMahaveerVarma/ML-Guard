@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
 import math
+from collections.abc import Mapping, Sequence
 from numbers import Real
 from typing import Any
 
@@ -24,9 +24,6 @@ from mlguard.results import (
     TestResult,
     ValidationReport,
 )
-
-
-
 
 _CLASSIFICATION_METRICS = frozenset({"accuracy", "precision", "recall", "f1"})
 _REGRESSION_METRICS = frozenset({"mae", "mse", "rmse", "r2", "max_absolute_error"})
