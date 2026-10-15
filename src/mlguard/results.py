@@ -88,3 +88,36 @@ class SuiteReport:
             "metadata": self.metadata,
             "results": [result.to_dict() for result in self.results],
         }
+
+
+@dataclass(frozen=True)
+class ValidationReport:
+    """Combined report for reliability checks and dataset performance metrics.
+
+    Reliability results have explicit pass/fail criteria. Evaluation metrics do
+    not have a universal pass threshold, so this report intentionally exposes
+    reliability_passed rather than a misleading overall quality status.
+    """
+
+    reliability: SuiteReport
+    evaluation: EvaluationReport
+    created_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def reliability_passed(self) -> bool:
+        """Whether every selected reliability check passed."""
+        return self.reliability.passed
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the combined report as a JSON-compatible dictionary."""
+        return {
+            "schema_version": "1.0",
+            "created_at": self.created_at,
+            "reliability_passed": self.reliability_passed,
+            "metadata": self.metadata,
+            "reliability": self.reliability.to_dict(),
+            "evaluation": self.evaluation.to_dict(),
+        }
