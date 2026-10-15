@@ -295,6 +295,8 @@ def test_cli_distribution_shift_accepts_variance_ratio_threshold(
             "distribution_shift",
             "--variance-ratio-threshold",
             "10.0",
+            "--shape-alpha",
+            "0.1",
         ]
     )
     report = json.loads(capsys.readouterr().out)
@@ -303,6 +305,7 @@ def test_cli_distribution_shift_accepts_variance_ratio_threshold(
     assert report["results"][0]["status"] == "passed"
     assert report["results"][0]["metrics"]["variance_ratios"] == [9.0]
     assert report["results"][0]["metrics"]["variance_ratio_threshold"] == 10.0
+    assert report["results"][0]["metrics"]["shape_alpha"] == 0.1
 
 
 
