@@ -259,7 +259,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         return _run_checks(args)
-    except (ImportError, AttributeError, OSError, TypeError, ValueError) as exc:
+    except Exception as exc:
         print(f"mlguard: error: {exc}", file=sys.stderr)
         return 2
 
