@@ -301,6 +301,17 @@ def test_distribution_shift_skips_variance_comparison_for_single_sample():
     assert result.metrics["variance_ratios"] == [None]
 
 
+def test_model_guard_forwards_shape_alpha_to_distribution_shift(constant_model):
+    report = ModelGuard(constant_model).run(
+        [[-1.0], [1.0], [-1.0], [1.0]],
+        checks=("distribution_shift",),
+        reference_X=[[-1.0], [1.0], [-1.0], [1.0]],
+        shape_alpha=0.1,
+    )
+
+    assert report.results[0].metrics["shape_alpha"] == pytest.approx(0.1)
+
+
 def test_distribution_shift_rejects_variance_ratio_threshold_at_or_below_one():
     from mlguard.checks import distribution_shift
 
@@ -373,11 +384,50 @@ def test_noise_robustness_rejects_wrong_baseline_prediction_count():
 
 
 
-def test_distribution_shift_documents_shape_only_blind_spot():
+def test_distribution_shift_detects_shape_change_with_matching_mean_and_variance():
+    from mlguard.checks import distribution_shift
+
+    reference = np.tile(np.array([-1.0, 1.0]), 50).reshape(-1, 1)
+    candidate = np.concatenate(
+        [
+            np.full(10, -np.sqrt(5.0)),
+            np.zeros(80),
+            np.full(10, np.sqrt(5.0)),
+        ]
+    ).reshape(-1, 1)
+    result = distribution_shift(reference, candidate)
+
+    assert result.status == "failed"
+    assert result.metrics["mean_shifted_feature_count"] == 0
+    assert result.metrics["variance_shifted_feature_count"] == 0
+    assert result.metrics["shape_shifted_feature_count"] == 1
+    assert result.metrics["empirical_cdf_distances"][0] == pytest.approx(0.4)
+    assert result.findings[0].details["shift_types"] == ["shape"]
+
+
+@pytest.mark.parametrize("shape_alpha", [0.0, 1.0, -0.1, np.inf, np.nan])
+def test_distribution_shift_rejects_invalid_shape_alpha(shape_alpha):
+    from mlguard.checks import distribution_shift
+
+    with pytest.raises(InputValidationError, match="shape_alpha"):
+        distribution_shift([[0.0], [1.0]], [[0.0], [1.0]], shape_alpha=shape_alpha)
+
+
+def test_distribution_shift_shape_threshold_is_sample_size_aware():
+    from mlguard.checks import distribution_shift
+
+    small = distribution_shift([[0.0], [1.0]], [[0.0], [1.0]])
+    large = distribution_shift(np.arange(100).reshape(-1, 1), np.arange(100).reshape(-1, 1))
+
+    assert small.metrics["shape_distance_threshold"] > large.metrics["shape_distance_threshold"]
+
+
+def test_distribution_shift_can_miss_shape_changes_with_tiny_samples():
     from mlguard.checks import distribution_shift
 
     # Both samples have exactly mean 0 and sample variance 4/3, but their
-    # observed values have different shapes.
+    # observed values have different shapes. The conservative threshold exceeds
+    # the empirical-CDF distance for these tiny samples.
     reference = np.array([[-1.0], [1.0], [-1.0], [1.0]])
     candidate = np.array([[-np.sqrt(2.0)], [0.0], [0.0], [np.sqrt(2.0)]])
     result = distribution_shift(reference, candidate)
@@ -385,6 +435,8 @@ def test_distribution_shift_documents_shape_only_blind_spot():
     assert result.status == "passed"
     assert result.metrics["mean_shifted_feature_count"] == 0
     assert result.metrics["variance_shifted_feature_count"] == 0
+    assert result.metrics["shape_shifted_feature_count"] == 0
+    assert result.metrics["shape_distance_threshold"] > result.metrics["empirical_cdf_distances"][0]
 
 
 def test_distribution_shift_same_sample_is_not_flagged():
