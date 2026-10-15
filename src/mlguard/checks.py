@@ -32,6 +32,20 @@ def _equal_predictions(left: np.ndarray, right: np.ndarray) -> np.ndarray:
     return np.asarray([np.array_equal(a, b) for a, b in zip(left, right, strict=True)])
 
 
+def _preserve_input_container(original_input: Any, values: np.ndarray) -> Any:
+    """Keep DataFrame column names and index when perturbing numeric features."""
+    columns = getattr(original_input, "columns", None)
+    index = getattr(original_input, "index", None)
+    if columns is not None and index is not None:
+        try:
+            return type(original_input)(values, columns=columns, index=index)
+        except (TypeError, ValueError):
+            # Fall back to NumPy for DataFrame-like containers with other
+            # constructor conventions. Plain arrays never enter this branch.
+            pass
+    return values
+
+
 def prediction_stability(model: ModelAdapter, X: Any) -> TestResult:
     """Check whether repeated predictions on the same data are deterministic."""
     first = _predict(model, X)
@@ -73,7 +87,7 @@ def noise_robustness(
     baseline = _predict(model, X)
     rng = np.random.default_rng(random_state)
     perturbed = numeric + rng.normal(0.0, noise_scale, size=numeric.shape)
-    changed_input: Any = perturbed
+    changed_input = _preserve_input_container(X, perturbed)
     noisy_predictions = _predict(model, changed_input)
     validate_same_sample_count(baseline, noisy_predictions)
     same = _equal_predictions(baseline, noisy_predictions)
@@ -220,7 +234,8 @@ def missing_value_robustness(
         "random_state": int(random_state),
     }
     try:
-        predictions = _predict(model, masked)
+        masked_input = _preserve_input_container(X, masked)
+        predictions = _predict(model, masked_input)
         validate_same_sample_count(original, predictions)
     except Exception as exc:
         underlying = exc.__cause__ if exc.__cause__ is not None else exc
