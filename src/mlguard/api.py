@@ -163,6 +163,7 @@ class ModelGuard:
         reference_X: Any | None = None,
         shift_threshold: float = 0.25,
         variance_ratio_threshold: float = 2.0,
+        shape_alpha: float = 0.05,
         missing_fraction: float = 0.05,
         baseline_model: ModelAdapter | None = None,
         comparison_mode: str = "auto",
@@ -195,6 +196,7 @@ class ModelGuard:
             reference_X=reference_X,
             shift_threshold=shift_threshold,
             variance_ratio_threshold=variance_ratio_threshold,
+            shape_alpha=shape_alpha,
             missing_fraction=missing_fraction,
             baseline_model=baseline_model,
             comparison_mode=comparison_mode,
@@ -230,6 +232,7 @@ class ModelGuard:
         reference_X: Any | None = None,
         shift_threshold: float = 0.25,
         variance_ratio_threshold: float = 2.0,
+        shape_alpha: float = 0.05,
         missing_fraction: float = 0.05,
         baseline_model: ModelAdapter | None = None,
         comparison_mode: str = "auto",
@@ -270,6 +273,7 @@ class ModelGuard:
                     X,
                     threshold=shift_threshold,
                     variance_ratio_threshold=variance_ratio_threshold,
+                    shape_alpha=shape_alpha,
                 )
             elif name == "missing_value_robustness":
                 result = check(
