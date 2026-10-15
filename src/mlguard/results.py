@@ -41,6 +41,30 @@ class TestResult:
 
 
 @dataclass(frozen=True)
+class EvaluationReport:
+    """Dataset-level performance metrics for a model evaluation."""
+
+    task: Literal["classification", "regression"]
+    sample_count: int
+    metrics: dict[str, Any]
+    created_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable evaluation report."""
+        return {
+            "schema_version": "1.0",
+            "created_at": self.created_at,
+            "task": self.task,
+            "sample_count": self.sample_count,
+            "metrics": self.metrics,
+            "metadata": self.metadata,
+        }
+
+
+@dataclass(frozen=True)
 class SuiteReport:
     """Report for a collection of reliability checks."""
 
