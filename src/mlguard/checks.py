@@ -46,27 +46,53 @@ def _preserve_input_container(original_input: Any, values: np.ndarray) -> Any:
     return values
 
 
-def prediction_stability(model: ModelAdapter, X: Any) -> TestResult:
-    """Check whether repeated predictions on the same data are deterministic."""
-    first = _predict(model, X)
-    second = _predict(model, X)
-    stable = _equal_predictions(first, second)
+def prediction_stability(
+    model: ModelAdapter,
+    X: Any,
+    *,
+    repeats: int = 3,
+) -> TestResult:
+    """Check prediction agreement across repeated calls on identical input.
+
+    At least two calls are required. The result marks a sample as changed if
+    any repeat differs from the first prediction for that sample.
+    """
+    if isinstance(repeats, bool) or not isinstance(repeats, int) or repeats < 2:
+        raise InputValidationError("repeats must be an integer of at least 2.")
+
+    input_array = as_array(X, name="X")
+    predictions = []
+    for _ in range(repeats):
+        prediction = _predict(model, X)
+        validate_same_sample_count(input_array, prediction)
+        predictions.append(prediction)
+
+    first = predictions[0]
+    stable = np.ones(first.shape[0], dtype=bool)
+    for prediction in predictions[1:]:
+        stable &= _equal_predictions(first, prediction)
     agreement = float(stable.mean())
+    changed_samples = int((~stable).sum())
     findings = () if agreement == 1.0 else (
         Finding(
             code="NON_DETERMINISTIC_PREDICTIONS",
             message="Repeated predictions differed for some samples.",
-            details={"changed_samples": int((~stable).sum())},
+            details={"changed_samples": changed_samples, "repeats": repeats},
         ),
     )
     return TestResult(
         name="prediction_stability",
         status="passed" if agreement == 1.0 else "failed",
-        summary=f"Prediction agreement across repeated calls: {agreement:.3f}.",
-        metrics={"prediction_agreement": agreement, "changed_samples": int((~stable).sum())},
+        summary=(
+            f"Prediction agreement across {repeats} calls: {agreement:.3f}."
+        ),
+        metrics={
+            "prediction_agreement": agreement,
+            "changed_samples": changed_samples,
+            "repeats": repeats,
+        },
         findings=findings,
     )
-
 
 def noise_robustness(
     model: ModelAdapter,
