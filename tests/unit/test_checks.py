@@ -318,7 +318,7 @@ class ThirdCallChangesModel:
         return np.full(len(X), value, dtype=int)
 
 
-def test_prediction_stability_catches_intermitttent_change_on_third_call():
+def test_prediction_stability_catches_intermittent_change_on_third_call():
     model = ThirdCallChangesModel()
     result = ModelGuard(model).run([[0.1], [0.9]], checks=("prediction_stability",)).results[0]
 
