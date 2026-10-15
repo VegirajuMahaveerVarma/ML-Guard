@@ -15,7 +15,12 @@ from mlguard.checks import (
 )
 from mlguard.evaluation import Average, Task, evaluate_predictions
 from mlguard.exceptions import ModelExecutionError
-from mlguard.results import EvaluationReport, SuiteReport, TestResult
+from mlguard.results import (
+    EvaluationReport,
+    SuiteReport,
+    TestResult,
+    ValidationReport,
+)
 
 
 class ModelGuard:
@@ -76,6 +81,63 @@ class ModelGuard:
             average=average,
             labels=labels,
             metadata=metadata,
+        )
+
+    def validate(
+        self,
+        X: Any,
+        y_true: Any,
+        *,
+        task: Task,
+        checks: tuple[str, ...] = ("prediction_stability", "noise_robustness"),
+        average: Average = "macro",
+        labels: Sequence[Any] | None = None,
+        noise_scale: float = 0.01,
+        random_state: int = 0,
+        metadata: dict[str, Any] | None = None,
+        reference_X: Any | None = None,
+        shift_threshold: float = 0.25,
+        missing_fraction: float = 0.05,
+        baseline_model: ModelAdapter | None = None,
+        comparison_mode: str = "auto",
+        atol: float = 1e-8,
+        rtol: float = 1e-5,
+        max_changed_fraction: float = 0.0,
+    ) -> ValidationReport:
+        """Run reliability checks and dataset evaluation as one workflow.
+
+        The reliability section reports whether selected checks passed.
+        Performance metrics are descriptive; no application-specific score
+        thresholds are applied and no overall model-quality verdict is implied.
+        """
+        report_metadata = dict(metadata or {})
+        reliability = self.run(
+            X,
+            checks=checks,
+            noise_scale=noise_scale,
+            random_state=random_state,
+            metadata=report_metadata,
+            reference_X=reference_X,
+            shift_threshold=shift_threshold,
+            missing_fraction=missing_fraction,
+            baseline_model=baseline_model,
+            comparison_mode=comparison_mode,
+            atol=atol,
+            rtol=rtol,
+            max_changed_fraction=max_changed_fraction,
+        )
+        evaluation = self.evaluate(
+            X,
+            y_true,
+            task=task,
+            average=average,
+            labels=labels,
+            metadata=report_metadata,
+        )
+        return ValidationReport(
+            reliability=reliability,
+            evaluation=evaluation,
+            metadata=report_metadata,
         )
 
     def run(
