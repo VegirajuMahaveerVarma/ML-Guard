@@ -173,3 +173,116 @@ def distribution_shift(
         },
         findings=findings,
     )
+
+
+def missing_value_robustness(
+    model: ModelAdapter,
+    X: Any,
+    *,
+    missing_fraction: float = 0.05,
+    random_state: int = 0,
+) -> TestResult:
+    """Check whether a model returns valid predictions when features contain NaNs.
+
+    A reproducible subset of cells in a numeric 2D copy of X is replaced with
+    NaN. The original input is not mutated. A model that rejects NaN values, or
+    emits non-finite predictions after receiving them, fails this check.
+    """
+    if (
+        not np.isfinite(missing_fraction)
+        or missing_fraction <= 0
+        or missing_fraction > 1
+    ):
+        raise InputValidationError(
+            "missing_fraction must be greater than 0 and at most 1."
+        )
+
+    original = require_numeric(as_array(X, name="X"), name="X")
+    if original.ndim != 2 or original.shape[1] == 0:
+        raise InputValidationError(
+            "X must be a 2D feature matrix with at least one feature."
+        )
+
+    baseline = _predict(model, X)
+    validate_same_sample_count(original, baseline)
+
+    total_cells = int(original.size)
+    missing_cells = max(1, int(np.ceil(total_cells * missing_fraction)))
+    rng = np.random.default_rng(random_state)
+    masked = original.copy()
+    masked.flat[rng.choice(total_cells, size=missing_cells, replace=False)] = np.nan
+
+    metrics = {
+        "requested_missing_fraction": float(missing_fraction),
+        "actual_missing_fraction": float(missing_cells / total_cells),
+        "missing_cells": missing_cells,
+        "total_cells": total_cells,
+        "random_state": int(random_state),
+    }
+    try:
+        predictions = _predict(model, masked)
+        validate_same_sample_count(original, predictions)
+    except Exception as exc:
+        underlying = exc.__cause__ if exc.__cause__ is not None else exc
+        error_type = type(underlying).__name__
+        return TestResult(
+            name="missing_value_robustness",
+            status="failed",
+            summary=(
+                "The model could not return predictions for input containing NaN values."
+            ),
+            metrics={**metrics, "error_type": error_type},
+            findings=(
+                Finding(
+                    code="MODEL_REJECTED_MISSING_VALUES",
+                    message=(
+                        "The model raised an exception for input containing missing features."
+                    ),
+                    details={"error_type": error_type},
+                ),
+            ),
+        )
+
+    if np.issubdtype(predictions.dtype, np.number):
+        invalid_predictions = int((~np.isfinite(predictions)).sum())
+    elif predictions.dtype.kind == "O":
+        invalid_predictions = sum(
+            value is None
+            or (
+                isinstance(value, (float, np.floating, complex, np.complexfloating))
+                and not np.isfinite(value)
+            )
+            for value in predictions.flat
+        )
+    else:
+        invalid_predictions = 0
+
+    metrics["invalid_prediction_count"] = int(invalid_predictions)
+    if invalid_predictions:
+        return TestResult(
+            name="missing_value_robustness",
+            status="failed",
+            summary=(
+                "The model returned invalid predictions for input containing NaN values."
+            ),
+            metrics=metrics,
+            findings=(
+                Finding(
+                    code="INVALID_PREDICTIONS_WITH_MISSING_INPUT",
+                    message=(
+                        "Some predictions were non-finite or null after missing values "
+                        "were introduced."
+                    ),
+                    details={"invalid_prediction_count": int(invalid_predictions)},
+                ),
+            ),
+        )
+
+    return TestResult(
+        name="missing_value_robustness",
+        status="passed",
+        summary=(
+            "The model accepted missing feature values and returned valid predictions."
+        ),
+        metrics=metrics,
+    )
