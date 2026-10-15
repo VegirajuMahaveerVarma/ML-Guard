@@ -189,4 +189,4 @@ def test_replay_requires_a_model_for_prediction_cases(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 2
-    assert "--model is required" in captured.err
+    assert "A model is required" in captured.err
