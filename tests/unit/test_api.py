@@ -42,3 +42,16 @@ def test_distribution_shift_can_run_through_model_guard(constant_model):
     )
     assert report.results[0].name == "distribution_shift"
     assert report.results[0].status == "passed"
+
+
+
+def test_missing_value_robustness_is_exposed_through_model_guard(constant_model, sample_X):
+    report = ModelGuard(constant_model).run(
+        sample_X,
+        checks=("missing_value_robustness",),
+        missing_fraction=0.25,
+        random_state=7,
+    )
+    assert report.results[0].name == "missing_value_robustness"
+    assert report.results[0].status == "passed"
+    assert report.results[0].metrics["missing_cells"] == 2
