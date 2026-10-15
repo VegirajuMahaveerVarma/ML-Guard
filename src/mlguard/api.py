@@ -6,8 +6,6 @@ from collections.abc import Sequence
 from typing import Any
 
 from mlguard.adapters.base import ModelAdapter
-from mlguard.evaluation import Average, Task, evaluate_predictions
-from mlguard.exceptions import ModelExecutionError
 from mlguard.checks import (
     distribution_shift,
     missing_value_robustness,
@@ -15,6 +13,8 @@ from mlguard.checks import (
     noise_robustness,
     prediction_stability,
 )
+from mlguard.evaluation import Average, Task, evaluate_predictions
+from mlguard.exceptions import ModelExecutionError
 from mlguard.results import EvaluationReport, SuiteReport, TestResult
 
 
