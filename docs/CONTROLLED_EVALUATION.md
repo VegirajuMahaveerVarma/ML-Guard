@@ -39,3 +39,27 @@ variance changes. It is a descriptive signal rather than a statistical
 hypothesis test and may miss shape-only changes. See
 [Competitive positioning](COMPETITIVE_POSITIONING.md) for the scope of the
 current design relative to established tools.
+
+
+## Repeated synthetic distribution-shift experiment
+
+`examples/distribution_shift_experiment.py` runs a seeded, repeated experiment
+for four cases: two samples from the same distribution, an injected mean shift,
+an injected variance change, and a shape change with matching population mean
+and variance. The default is 100 trials with 512 rows per sample:
+
+```bash
+python examples/distribution_shift_experiment.py
+```
+
+The report gives observed false-positive and detection rates for these specific
+synthetic settings. Its smoke gate requires at least 95% detection of the
+configured mean and variance shifts and no more than 10% flags for same-
+distribution controls. These are deliberately simple checks to prevent gross
+regressions, not universal acceptance criteria or statistically precise
+performance estimates.
+
+The shape-only case is included to make an important limitation visible: a
+screen based on means and variances can miss a distribution change that preserves
+both. A real evaluation should include more distributions, thresholds, seeds,
+sample sizes, and model families before making broad reliability claims.
