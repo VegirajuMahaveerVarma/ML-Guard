@@ -306,3 +306,29 @@ def test_distribution_shift_rejects_variance_ratio_threshold_at_or_below_one():
 
     with pytest.raises(InputValidationError, match="variance_ratio_threshold"):
         distribution_shift([[0.0], [1.0]], [[0.0], [1.0]], variance_ratio_threshold=1.0)
+
+
+class ThirdCallChangesModel:
+    def __init__(self):
+        self.calls = 0
+
+    def predict(self, X):
+        self.calls += 1
+        value = 0 if self.calls < 3 else 1
+        return np.full(len(X), value, dtype=int)
+
+
+def test_prediction_stability_catches_intermitttent_change_on_third_call():
+    model = ThirdCallChangesModel()
+    result = ModelGuard(model).run([[0.1], [0.9]], checks=("prediction_stability",)).results[0]
+
+    assert result.status == "failed"
+    assert result.metrics["repeats"] == 3
+    assert result.metrics["changed_samples"] == 2
+
+
+def test_prediction_stability_rejects_fewer_than_two_repeats():
+    with pytest.raises(InputValidationError, match="repeats"):
+        ModelGuard(ThirdCallChangesModel()).run(
+            [[0.1]], checks=("prediction_stability",), stability_repeats=1
+        )
