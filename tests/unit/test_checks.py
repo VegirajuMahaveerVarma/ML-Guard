@@ -332,3 +332,41 @@ def test_prediction_stability_rejects_fewer_than_two_repeats():
         ModelGuard(ThirdCallChangesModel()).run(
             [[0.1]], checks=("prediction_stability",), stability_repeats=1
         )
+
+
+def test_prediction_stability_rejects_wrong_prediction_count():
+    class TruncatedModel:
+        def predict(self, X):
+            return np.zeros(len(X) - 1, dtype=int)
+
+    with pytest.raises(InputValidationError, match="predictions for"):
+        ModelGuard(TruncatedModel()).run([[0.1], [0.9]], checks=("prediction_stability",))
+
+
+def test_model_comparison_errors_when_both_models_skip_an_input_sample():
+    class TruncatedModel:
+        def predict(self, X):
+            return np.zeros(len(X) - 1, dtype=int)
+
+    report = ModelGuard(TruncatedModel()).run(
+        [[0.1], [0.9]],
+        checks=("model_comparison",),
+        baseline_model=TruncatedModel(),
+    )
+
+    result = report.results[0]
+    assert result.status == "error"
+    assert result.findings[0].code == "MODEL_PREDICTION_COUNT_MISMATCH"
+    assert result.metrics["input_sample_count"] == 2
+    assert result.metrics["baseline_sample_count"] == 1
+
+
+def test_noise_robustness_rejects_wrong_baseline_prediction_count():
+    class TruncatedModel:
+        def predict(self, X):
+            return np.zeros(len(X) - 1, dtype=int)
+
+    with pytest.raises(InputValidationError, match="same number of samples"):
+        ModelGuard(TruncatedModel()).run(
+            [[0.1], [0.9]], checks=("noise_robustness",), noise_scale=0.0
+        )
