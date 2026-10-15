@@ -260,3 +260,49 @@ def test_model_comparison_rejects_invalid_configuration(kwargs, message):
             [[0.1], [0.2]],
             **kwargs,
         )
+
+
+def test_distribution_shift_detects_variance_only_change():
+    from mlguard.checks import distribution_shift
+
+    reference = np.array([[-1.0], [1.0], [-1.0], [1.0]])
+    candidate = np.array([[-3.0], [3.0], [-3.0], [3.0]])
+    result = distribution_shift(reference, candidate, threshold=0.25)
+
+    assert result.status == "failed"
+    assert result.metrics["mean_shifted_feature_count"] == 0
+    assert result.metrics["variance_shifted_feature_count"] == 1
+    assert result.metrics["variance_ratios"] == [9.0]
+    assert result.findings[0].details["shift_types"] == ["variance"]
+
+
+def test_distribution_shift_reports_unbounded_variance_ratio_as_json_null():
+    import json
+
+    from mlguard.checks import distribution_shift
+
+    reference = np.zeros((4, 1))
+    candidate = np.array([[0.0], [1.0], [0.0], [1.0]])
+    result = distribution_shift(reference, candidate)
+
+    assert result.status == "failed"
+    assert result.metrics["variance_ratios"] == [None]
+    assert result.findings[0].details["variance_ratio"] is None
+    json.dumps(result.to_dict(), allow_nan=False)
+
+
+def test_distribution_shift_skips_variance_comparison_for_single_sample():
+    from mlguard.checks import distribution_shift
+
+    result = distribution_shift([[0.0]], [[0.1]])
+
+    assert result.metrics["variance_check_available"] is False
+    assert result.metrics["variance_shifted_feature_count"] == 0
+    assert result.metrics["variance_ratios"] == [None]
+
+
+def test_distribution_shift_rejects_variance_ratio_threshold_at_or_below_one():
+    from mlguard.checks import distribution_shift
+
+    with pytest.raises(InputValidationError, match="variance_ratio_threshold"):
+        distribution_shift([[0.0], [1.0]], [[0.0], [1.0]], variance_ratio_threshold=1.0)
