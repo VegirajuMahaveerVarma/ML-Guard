@@ -19,6 +19,21 @@ from mlguard.results import (
 )
 
 
+def _reject_nonstandard_json_constant(value: str) -> Any:
+    """Reject JavaScript-style NaN and Infinity tokens, which are not valid JSON."""
+    raise ValueError(f"Non-standard JSON constant {value!r} is not allowed.")
+
+
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject duplicate object keys so artifact values cannot be silently overwritten."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate JSON object key {key!r}.")
+        result[key] = value
+    return result
+
+
 def save_regression_cases(
     cases: Iterable[RegressionCase],
     path: str | Path,
@@ -46,8 +61,12 @@ def load_regression_cases(path: str | Path) -> tuple[RegressionCase, ...]:
     """Load and validate cases saved by save_regression_cases."""
     source = Path(path)
     try:
-        payload = json.loads(source.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        payload = json.loads(
+            source.read_text(encoding="utf-8"),
+            parse_constant=_reject_nonstandard_json_constant,
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+    except (OSError, ValueError) as exc:
         raise ValueError(f"Could not load regression cases from '{source}': {exc}") from exc
     if not isinstance(payload, dict):
         raise ValueError("Regression case file must contain a JSON object.")
