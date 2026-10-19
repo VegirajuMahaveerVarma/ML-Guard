@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "kind": "mlguard-regression-cases",
+  "case_count": 1,
+  "cases": [
+    {
+      "case_id": "rg-e6e992c93c434545",
+      "check_name": "model_comparison",
+      "scenario": "candidate_prediction_regression",
+      "input": [0.9],
+      "input_layout": "sample",
+      "input_format": "array",
+      "columns": [],
+      "reference_input": null,
+      "reference_input_layout": "sample",
+      "reference_input_format": "array",
+      "reference_columns": [],
+      "sample_index": 0,
+      "expected_prediction": 1,
+      "observed_prediction": 0,
+      "parameters": {
+        "comparison_mode": "classification",
+        "atol": 0.0,
+        "rtol": 0.0,
+        "max_changed_fraction": 0.0
+      },
+      "finding_code": "MODEL_PREDICTIONS_CHANGED"
+    }
+  ]
+}

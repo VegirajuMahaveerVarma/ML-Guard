@@ -79,3 +79,19 @@ than causing the original reliability check to fail. Replay preserves DataFrame
 column labels; DataFrame cases require pandas in the replay environment. A
 saved case preserves triggering inputs, but stochastic models or
 environment-dependent inference may still produce different outcomes.
+
+
+## Keep a persistent regression suite in CI
+
+MLGuard includes a small, synthetic fixture at
+tests/fixtures/regression_cases.json. The automated workflow replays this
+artifact against examples.regression_suite_model:load_model on every change.
+It confirms saved cases can be loaded and replayed through the public CLI, and
+that the recorded baseline prediction still matches. If the fixture model is
+changed so the old prediction returns, the replay command exits nonzero and CI
+fails.
+
+For your own project, capture cases from a real failure with --cases-output and
+commit only sanitized, non-sensitive examples that you intend to keep as
+long-lived regression tests. Point the replay command at a trusted model
+factory in your repository. Remember that saved case files include input values.

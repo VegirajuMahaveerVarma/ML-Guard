@@ -24,6 +24,12 @@ jobs:
       - run: python -m pytest
       - name: Run controlled fault-injection smoke evaluation
         run: python examples/fault_injection_demo.py
+      - name: Replay persistent regression cases
+        run: >-
+          python -m mlguard replay
+          --model examples.regression_suite_model:load_model
+          --model-path .
+          --cases tests/fixtures/regression_cases.json
       - name: Run synthetic distribution-shift experiment
         run: python examples/distribution_shift_experiment.py --trials 100 --sample-size 512
 
