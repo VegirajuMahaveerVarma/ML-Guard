@@ -11,3 +11,20 @@ venv/
 .coverage
 htmlcov/
 .env
+# Python virtual environments
+.venv/
+.venv-*/
+venv/
+env/
+
+# Build and distribution artifacts
+build/
+dist/
+dist-*/
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mlguard-reliability"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local-first reliability checks for machine learning models."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -39,6 +39,22 @@ dev = ["pytest>=8.0", "ruff>=0.5", "mypy>=1.10", "pandas>=1.5"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mlguard"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/.venv/",
+  "/.venv-*/",
+  "/venv/",
+  "/env/",
+  "/dist/",
+  "/dist-*/",
+  "/build/",
+  "/.pytest_cache/",
+  "/.ruff_cache/",
+  "/.mypy_cache/",
+  "**/__pycache__/",
+  "**/*.pyc",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

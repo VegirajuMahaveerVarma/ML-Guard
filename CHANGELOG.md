@@ -2,6 +2,11 @@
 
 Notable changes to MLGuard are recorded here.
 
+## [0.1.1] — 2026-10-24
+
+- Improved the optional scikit-learn adapter's missing-dependency error message with a direct installation command.
+- Added regression coverage to verify that the adapter provides the correct installation guidance when scikit-learn is unavailable.
+
 ## [0.1.0] — 2026-10-15
 
 First public alpha scope:

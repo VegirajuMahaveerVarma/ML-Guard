@@ -35,4 +35,4 @@ __all__ = [
     "replay_regression_cases",
     "save_regression_cases",
 ]
-__version__ = "0.1.0"
+__version__ = "0.1.1"

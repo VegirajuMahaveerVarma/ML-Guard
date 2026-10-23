@@ -25,8 +25,8 @@ class SklearnAdapter:
             from sklearn.utils.validation import check_is_fitted
         except ImportError as exc:
             raise ImportError(
-                "SklearnAdapter requires scikit-learn. Install it with "
-                "Install with: python -m pip install -e .[sklearn]."
+                "SklearnAdapter requires scikit-learn. Install the optional dependency "
+                "with: python -m pip install scikit-learn."
             ) from exc
 
         try:
