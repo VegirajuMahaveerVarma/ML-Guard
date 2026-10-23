@@ -65,7 +65,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: MLGuard ${{ github.ref_name }} — Alpha
-          body_path: docs/releases/v0.1.0.md
+          body_path: docs/releases/${{ github.ref_name }}.md
           prerelease: true
           files: |
             dist/*.whl
