@@ -45,7 +45,7 @@ alpha scope and [docs/RELEASING.md](docs/RELEASING.md) for release steps.
 
 Python 3.10 or newer is required.
 
-```bash
+bash
 python -m venv .venv
 # Windows PowerShell:
 .venv\Scripts\Activate.ps1
